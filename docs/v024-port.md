@@ -1,10 +1,9 @@
 # The v0.24.0 port
 
-Since 2026‑07 the project targets **official vLLM v0.24.0** instead of the old `v0.19.2rc0`
-fork. Upstream now ships DeepSeek‑V4 + SM120 natively (new `vllm/models/deepseek_v4/` layout,
-FlashInfer SM120 sparse‑MLA, GLM‑5.x `GlmMoeDsaForCausalLM`), so the old 43.5k‑line backport is
-gone; what remains is a **~3.4k‑line overlay**: the 2‑bit expert planes, the FP4 delta cache,
-the confidence gate, the cubit dispatch — plus the SM120 fixes below.
+The project targets **official vLLM v0.24.0**, which ships DeepSeek‑V4 + SM120 natively
+(`vllm/models/deepseek_v4/`, FlashInfer SM120 sparse‑MLA, GLM‑5.x `GlmMoeDsaForCausalLM`).
+Our overlay is a **3.7k‑line patch**: the 2‑bit expert planes, the FP4 delta cache, the
+confidence gate, the cubit dispatch — plus the SM120 fixes below.
 
 ## Apply
 
@@ -62,35 +61,21 @@ full‑pipeline replay under PP, pure‑decode only). τ is runtime‑tunable vi
 k=2, graphs): fires/promotes/replays per τ, coherent output; arming the gate costs ~10%
 single‑stream (per‑step confidence sync) and the replays at τ=0.60 were throughput‑neutral
 on top of that (FP4 re‑decides lift MTP acceptance enough to pay for themselves); τ=0.75
-costs ~5% more. Still pending from the fork: the **cubit sparse‑MLA prefill callsites**
-(moot — upstream's FlashInfer SM120 prefill outbenches the fork's path, see below).
+costs ~5% more.
 
-## Benchmarks vs the old fork (2026‑07‑08)
+## Benchmarks (2026‑07‑08)
 
-Same machine, same official FP4 checkpoint, same knobs (`VLLM_MOE_W2=1`, FP4 delta 1 GiB,
-MTP k=2, cudagraphs FULL_AND_PIECEWISE, fp8 KV, block 256, `max_num_seqs` 4, mnbt 1024;
-PRO 6000 runs at 24576 ctx, 5090 runs at 16384 ctx). Old fork measured on its live legacy
-containers the same day, confidence gate disabled for the baseline. Tools: `tools/bench_tok.py`
-(single‑stream decode, 512 tok, median of 5) and a unique‑prefix prefill probe (8k tokens,
-median of ≥3). MTP acceptance was identical across bases (~2.6 tok/step), so deltas are
-step‑time, not speculation luck.
+Official FP4 checkpoint, `VLLM_MOE_W2=1`, FP4 delta 1 GiB, MTP k=2, cudagraphs
+FULL_AND_PIECEWISE, fp8 KV, block 256, `max_num_seqs` 4, mnbt 1024; PRO 6000 runs at
+24576 ctx, 5090 runs at 16384 ctx. Tools: `tools/bench_tok.py` (single‑stream decode,
+512 tok, median of 5) and a unique‑prefix prefill probe (8k tokens, median of ≥3; unique
+prefixes defeat the prefix cache). MTP acceptance ~2.6 tok/step in every config.
 
-| config | metric | fork v0.19 | port v0.24 | Δ |
-|---|---|---:|---:|---|
-| 1× RTX PRO 6000 | decode | 127.5 tok/s | **161.2** | **+26%** |
-| 1× RTX PRO 6000 | prefill 8k | 2 309 tok/s | **4 847** | **+110%** |
-| 1× RTX PRO 6000 | decode conc‑3 | ~254 | ~289 | +14% (noisy) |
-| 2× RTX PRO 6000 TP2 | decode | 177.3 tok/s | **209.6** | **+18%** |
-| 2× RTX PRO 6000 TP2 | prefill 8k | 3 342 tok/s | **5 791** | **+73%** |
-| 2× RTX PRO 6000 TP2 | decode conc‑3 | ~310 | ~380 | +23% |
-| 4× RTX 5090 TP4 | decode | 106.7 tok/s | **214.4** | **+101%** |
-| 4× RTX 5090 TP4 | prefill 8k | 3 765 tok/s | **5 561** | **+48%** |
-| 4× RTX 5090 TP4 | decode conc‑3 | ~206 | ~430 | ~2× |
+| config | decode | prefill 8k | decode conc‑3 (aggregate) |
+|---|---:|---:|---:|
+| 1× RTX PRO 6000 | **161.2 tok/s** | **4 847 tok/s** | ~289 tok/s |
+| 2× RTX PRO 6000 TP2 | **209.6 tok/s** | **5 791 tok/s** | ~380 tok/s |
+| 4× RTX 5090 TP4 | **214.4 tok/s** | **5 561 tok/s** | ~430 tok/s |
 
-(Old‑fork TP2 note: the fork disables CUDA graphs on TP unless its
-`VLLM_TRITON_MLA_SPARSE_ALLOW_CUDAGRAPH=1` env is set — with graphs off it decodes at ~12 tok/s.
-The number above is the fair graphs‑on config, matching `tools/serve.sh`.)
-
-The prefill gain is upstream's FlashInfer SM120 sparse‑MLA prefill replacing the fork's Triton
-path — it also makes the planned cubit MLA‑prefill retarget mostly moot. The w2 GEMM cubins are
-identical on both sides.
+Prefill rides upstream's FlashInfer SM120 sparse‑MLA path — which also makes a custom cubit
+MLA‑prefill kernel unnecessary on this base.

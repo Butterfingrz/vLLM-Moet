@@ -1,6 +1,6 @@
 # DeepSeek‑V4‑Flash on Blackwell (SM120)
 
-**Official vLLM v0.24.0 + a ~3.4k‑line patch** that (a) makes DeepSeek‑V4‑Flash (159B MoE)
+**Official vLLM v0.24.0 + a 3.7k‑line patch** that (a) makes DeepSeek‑V4‑Flash (159B MoE)
 actually run on consumer/workstation Blackwell — the release is broken‑as‑shipped for DS4 on
 SM120 — and (b) fits it on hardware the FP4 checkpoint can't reach, by compressing the experts
 to **2 bits** with **FP4 recovery**, on hand‑written SM120 SASS kernels.
@@ -10,15 +10,14 @@ to **2 bits** with **FP4 recovery**, on hand‑written SM120 SASS kernels.
 Official DeepSeek‑V4‑Flash checkpoint, 2‑bit experts + FP4 delta cache, MTP k=2, CUDA graphs
 (single‑stream medians; prefill = 8k‑token prompt, uncached; 2026‑07‑08):
 
-| hardware | decode | prefill 8k | vs our previous v0.19 base |
-|---|---:|---:|---|
-| **1× RTX PRO 6000 (96 GB)** | **161 tok/s** | **4 850 tok/s** | +26% / +110% |
-| **2× RTX PRO 6000 (TP2)** | **210 tok/s** | **5 790 tok/s** | +18% / +73% |
-| **4× RTX 5090 (TP4)** | **214 tok/s** | **5 560 tok/s** | +101% / +48% |
+| hardware | decode | prefill 8k |
+|---|---:|---:|
+| **1× RTX PRO 6000 (96 GB)** | **161 tok/s** | **4 850 tok/s** |
+| **2× RTX PRO 6000 (TP2)** | **210 tok/s** | **5 790 tok/s** |
+| **4× RTX 5090 (TP4)** | **214 tok/s** | **5 560 tok/s** |
 
-Four consumer 5090s now match two PRO 6000s on decode. MTP acceptance is unchanged across
-bases (~2.6 tok/step) — the deltas are step time, not speculation luck. Full methodology and
-the base‑vs‑base tables: **[docs/v024-port.md](docs/v024-port.md)**.
+Four consumer 5090s match two PRO 6000s on decode. MTP acceptance ~2.6 tok/step across all
+configs. Methodology: **[docs/v024-port.md](docs/v024-port.md)**.
 
 A 96 GB card cannot even load the official checkpoint (FP4 experts + FP8 dense ≈ 149 GiB);
 here it serves it at 161 tok/s.
@@ -58,9 +57,9 @@ sign‑symmetric codebook at load, float64‑exact vs the reference pipeline).
 
 ## The base: vLLM v0.24.0 on SM120
 
-Upstream v0.24.0 ships DeepSeek‑V4 + SM120 natively, which shrank this project from a 43.5k‑line
-fork to a patch — but the release cannot actually serve DS4 on SM120. The patch carries the
-fixes (details in [docs/v024-port.md](docs/v024-port.md)):
+Upstream v0.24.0 ships DeepSeek‑V4 + SM120 natively — but the release cannot actually serve
+DS4 on SM120. The patch carries the fixes (details in
+[docs/v024-port.md](docs/v024-port.md)):
 
 - **DeepGEMM**: release pin has no family‑120 host paths ("Unknown SF transformation",
   einsum/indexer asserts) → pin **nv‑dev `a6b593d2`** (as vLLM main did).
@@ -98,19 +97,19 @@ docker run --rm --gpus '"device=0"' --network host --ipc host --shm-size 64g \
 ```
 
 `VLLM_MOE_W2=0` = stock FP4 path (needs ≥2 cards). TP: add `--tensor-parallel-size 2|4` and
-`--disable-custom-all-reduce`. The legacy v0.19 fork build lives in
-[BUILD.md](BUILD.md) / `Dockerfile.sm120`.
+`--disable-custom-all-reduce`. Confidence gate: `-e VLLM_MOE_W2_GATE=1`
+(+ optional `VLLM_MOE_W2_GATE_TAU`).
 
 ## Quality
 
 Method: baseline is the untouched official checkpoint; our variant changes only the expert
 codes (same stack, byte‑identical dense/scales/headers), so any delta is the quantization
-alone — see [docs/quality.md](docs/quality.md). Established on the previous base (identical
-quant scheme, same cubins): MTP acceptance 2.73 vs 2.68 FP4 reference, draft accept 86.3% vs
-84.1%, 12/12 coherent greedy outputs; bare 2‑bit agrees with FP4 on 89% of next‑token picks —
-the delta cache + gate close that gap. On v0.24 the acceptance reproduces (~2.6 tok/step);
-long‑context validation (512K needle runs on the fork) is pending re‑run on the new base.
-Standardized functional evals (HumanEval/GSM8K) remain TODO.
+alone — see [docs/quality.md](docs/quality.md). The QUANT_PROBE study (identical quant scheme
+and cubins): MTP acceptance 2.73 vs 2.68 FP4 reference, draft accept 86.3% vs 84.1%, 12/12
+coherent greedy outputs; bare 2‑bit agrees with FP4 on 89% of next‑token picks — the delta
+cache + gate close that gap. Live serving reproduces the acceptance (~2.6 tok/step);
+long‑context (512K needle) re‑validation and standardized functional evals (HumanEval/GSM8K)
+remain TODO.
 
 ## Next: GLM‑5.2
 
@@ -151,5 +150,3 @@ kernels here are reachable through stock CUDA on sm_120; this toolchain is what 
   GLM‑5.x family) + generators (`gen/`) + `MANIFEST.md`.
 - **`docs/v024-port.md`** — the port: pins, SM120 fixes, apply recipe, benchmark methodology.
 - **`docs/quality.md`** — quality methodology.
-- **`BUILD.md`** / **`Dockerfile.sm120`** / **`patch/vllm-moet.patch`** / **`tools/serve.sh`** —
-  the legacy v0.19 fork (kept for reference).
