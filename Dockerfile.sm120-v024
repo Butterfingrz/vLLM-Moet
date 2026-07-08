@@ -27,15 +27,22 @@
 # Knobs and benchmark methodology: docs/v024-port.md.
 
 # ---------------------------------------------------------------- deep_gemm
-# Built in a devel stage (needs nvcc + torch headers); the runtime image then
-# just installs the wheel. Keep the ref in sync with docs/v024-port.md.
-FROM nvidia/cuda:13.0.2-devel-ubuntu22.04 AS deepgemm-builder
+# Built INSIDE the official image itself (it ships nvcc 13.0 + torch 2.11 +
+# py3.12 for runtime JIT), so the wheel's python/glibc/torch ABI matches the
+# runtime by construction. A separate nvidia/cuda devel builder does NOT work:
+# 22.04 = py3.10 (cp310 wheel rejected), 24.04 = glibc 2.38 (runtime has 2.35).
+# Keep the ref in sync with docs/v024-port.md.
+FROM vllm/vllm-openai:v0.24.0 AS deepgemm-builder
 ARG DEEPGEMM_REF=a6b593d2826719dcf4892609af7b84ee23aaf32a
+# git to clone; plus the CUDA dev headers the runtime image lacks:
+# cusparse/cusolver/cublas (torch's CUDAContextLight.h), nvrtc (DeepGEMM's
+# JIT compiler.hpp), profiler-api (torch headers on some paths).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git python3 python3-pip python3-dev && rm -rf /var/lib/apt/lists/*
-RUN pip3 install --no-cache-dir torch==2.11.0 \
-        --index-url https://download.pytorch.org/whl/cu130 \
-    && pip3 install --no-cache-dir pybind11 setuptools wheel
+        git libcusparse-dev-13-0 libcusolver-dev-13-0 libcublas-dev-13-0 \
+        cuda-nvrtc-dev-13-0 cuda-profiler-api-13-0 \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir --break-system-packages \
+        pybind11 setuptools wheel packaging
 RUN git clone https://github.com/deepseek-ai/DeepGEMM.git /deepgemm \
     && cd /deepgemm && git checkout "$DEEPGEMM_REF" \
     && git submodule update --init --depth 1 third-party/cutlass third-party/fmt \
