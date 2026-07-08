@@ -8,11 +8,12 @@ kernels (the `cubit` toolchain).
 Built on and incorporating:
 
 - vLLM (https://github.com/vllm-project/vllm), Apache License 2.0,
-  Copyright contributors to the vLLM project. The base is the official tag v0.19.2rc0;
-  `patch/vllm-moet.patch` is applied on top of it. That patch also carries the DeepSeek-V4
-  model support + sparse-MLA / MTP / indexer + SM120 enablement, which were authored by
-  vLLM contributors and the base-fork (kacper-daftcode) authors — not by this project.
-  This project's own contribution is the 2-bit MoE + FP4 delta + the cubit kernels.
+  Copyright contributors to the vLLM project. The base is the official tag v0.24.0;
+  `patch/vllm-moet-v0.24.0.patch` is applied on top of it. DeepSeek-V4 model support,
+  sparse-MLA / MTP / indexer and SM120 enablement ship in upstream vLLM and were authored
+  by vLLM contributors — not by this project. This project's own contribution is the
+  2-bit MoE + FP4 delta cache + confidence gate + the cubit kernels, plus small SM120
+  fixes to the upstream base (carried in the patch).
 
 - DeepGEMM (https://github.com/deepseek-ai/DeepGEMM) is referenced by the base for
   Hopper/Blackwell-DC FP8 paths; it is not used or redistributed here (it has no SM120
