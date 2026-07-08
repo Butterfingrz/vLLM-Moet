@@ -54,6 +54,12 @@ Environment pins that go with the patch (both required on SM120):
 Everything stays **opt‑in** (`VLLM_MOE_W2=1` etc.); with the knobs off the only behavioural
 delta vs stock v0.24.0 are the SM120 fixes above.
 
+Not yet re‑integrated from the fork (upstream restructured the surrounding code; both are
+opt‑in extras, not correctness): the **confidence‑gate driver** in the model runner (the
+`moe_w2_gate` decision module ships, but nothing re‑forwards low‑confidence tokens yet) and
+the **cubit sparse‑MLA prefill callsites** (moot for now — upstream's FlashInfer SM120 prefill
+outbenches the fork's path, see below).
+
 ## Benchmarks vs the old fork (2026‑07‑08)
 
 Same machine, same official FP4 checkpoint, same knobs (`VLLM_MOE_W2=1`, FP4 delta 1 GiB,

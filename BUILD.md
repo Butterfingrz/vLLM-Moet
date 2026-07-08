@@ -1,7 +1,15 @@
 # Build & Run — vLLM‑Moet (SM120 / RTX PRO 6000)
 
-Everything here is expressed as **a patch + kernels on top of an official vLLM tag**. (Rebasing
-the patch onto a newer official tag is future work; see "Why this tag".)
+Everything here is expressed as **a patch + kernels on top of an official vLLM tag**.
+
+> **Current base is vLLM v0.24.0** — build with **`Dockerfile.sm120-v024`**
+> (`DOCKER_BUILDKIT=1 docker build -f Dockerfile.sm120-v024 -t vllm-moet-sm120:v024 .`).
+> It starts from the official `vllm/vllm-openai:v0.24.0` image, applies
+> `patch/vllm-moet-v0.24.0.patch` (pure‑Python), swaps in DeepGEMM nv‑dev + flashinfer 0.6.14
+> (both required on SM120) and bakes the cubins. Details + benchmarks: `docs/v024-port.md`.
+> The rest of this file documents the **legacy v0.19.2rc0 fork** build; its "Why this tag"
+> rationale is obsolete (upstream now ships DS4+SM120; the remaining SM120 breakages are
+> fixed by the v0.24 patch).
 
 ## Pinned base
 | component | source | ref | role |

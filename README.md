@@ -89,15 +89,17 @@ at 84). FP4‑level quality comes *from the recovery*, not from the bare 2‑bit
 ```bash
 git clone https://github.com/kacper-daftcode/vLLM-Moet && cd vLLM-Moet
 
-# one self-contained build: clones official vLLM v0.19.2rc0, applies our patch,
-# builds for sm_120, and bakes in the prebuilt SM120 cubins (~15-25 min)
-DOCKER_BUILDKIT=1 docker build -f Dockerfile.sm120 -t vllm-moet-sm120:base .
+# current (vLLM v0.24.0 base): official vllm-openai image + our patch + pins + cubins
+DOCKER_BUILDKIT=1 docker build -f Dockerfile.sm120-v024 -t vllm-moet-sm120:v024 .
+# serve command with all knobs: see the header of Dockerfile.sm120-v024
 
-# serve — cubins are baked in, so only the checkpoint is needed
-MODEL=/path/to/DeepSeek-V4-Flash bash tools/serve.sh 0 8000   # GPUs "0" / "0,1"; PP= for pipeline
+# legacy (v0.19 fork, ~15-25 min source build):
+DOCKER_BUILDKIT=1 docker build -f Dockerfile.sm120 -t vllm-moet-sm120:base .
+MODEL=/path/to/DeepSeek-V4-Flash bash tools/serve.sh 0 8000
 ```
-`MOE_W2=0` runs native FP4 (full quality, ≥2 cards); default is the 2‑bit fit. Knobs: `GATE`,
-`DELTA_GB`, `MAX_LEN`, `UTIL`, `SEQS`. All details → **[BUILD.md](BUILD.md)**.
+`VLLM_MOE_W2=0` runs native FP4 (full quality, ≥2 cards); `=1` is the 2‑bit fit. Knobs:
+`VLLM_MOE_W2_DELTA_GB`, `VLLM_MOE_W2_GATE` (gate driver not yet re‑integrated on v0.24 —
+see `docs/v024-port.md`). Legacy fork details → **[BUILD.md](BUILD.md)**.
 
 ---
 
@@ -174,5 +176,6 @@ kernels here are reachable through stock CUDA on sm_120; this toolchain is what 
 - **`patch/vllm-moet.patch`** — legacy delta vs `v0.19.2rc0` (the old fork; superseded).
 - **`docs/v024-port.md`** — the v0.24 port: dependency pins, SM120 fixes, apply recipe,
   benchmark methodology.
-- **`BUILD.md`** / **`Dockerfile.sm120`** — pinned base, SM120 build recipe, run instructions
-  (v0.19 fork; for v0.24 see `docs/v024-port.md`).
+- **`Dockerfile.sm120-v024`** — **current** image: official `vllm/vllm-openai:v0.24.0` + patch +
+  DeepGEMM nv‑dev + flashinfer 0.6.14 + cubins (see header for the serve command).
+- **`BUILD.md`** / **`Dockerfile.sm120`** — legacy v0.19 fork build recipe.
