@@ -1,148 +1,122 @@
 # DeepSeek‑V4‑Flash on Blackwell (SM120)
 
-A hard‑tuned **vLLM** that makes **DeepSeek‑V4‑Flash** (159B MoE) **fast** on Blackwell — and
-fits it on hardware the FP4 checkpoint can't. The 2‑bit expert compression + FP4 recovery and the
-SM120 SASS kernels are ours; the base is official vLLM (**v0.24.0** since 2026‑07).
+**Official vLLM v0.24.0 + a ~3.4k‑line patch** that (a) makes DeepSeek‑V4‑Flash (159B MoE)
+actually run on consumer/workstation Blackwell — the release is broken‑as‑shipped for DS4 on
+SM120 — and (b) fits it on hardware the FP4 checkpoint can't reach, by compressing the experts
+to **2 bits** with **FP4 recovery**, on hand‑written SM120 SASS kernels.
 
 ## What you get
 
-**Current base: official vLLM v0.24.0** (`patch/vllm-moet-v0.24.0.patch`, ~3.4k lines — the old
-43.5k‑line DS4/SM120 backport died when upstream shipped DeepSeek‑V4 + SM120 natively). Same
-machine/checkpoint/knobs A/B vs the previous fork (official FP4 checkpoint, 2‑bit experts +
-FP4 delta, MTP k=2, CUDA graphs, single‑stream medians, 2026‑07‑08):
+Official DeepSeek‑V4‑Flash checkpoint, 2‑bit experts + FP4 delta cache, MTP k=2, CUDA graphs
+(single‑stream medians; prefill = 8k‑token prompt, uncached; 2026‑07‑08):
 
-| hardware | fork v0.19 | **port v0.24** | Δ |
+| hardware | decode | prefill 8k | vs our previous v0.19 base |
 |---|---:|---:|---|
-| 1× RTX PRO 6000 (96 GB) — decode | 127.5 tok/s | **161.2 tok/s** | **+26%** |
-| 1× RTX PRO 6000 — prefill 8k | 2 309 tok/s | **4 847 tok/s** | **+110%** |
-| 2× RTX PRO 6000 (TP2) — decode | 177.3 tok/s | **209.6 tok/s** | **+18%** |
-| 2× RTX PRO 6000 (TP2) — prefill 8k | 3 342 tok/s | **5 791 tok/s** | **+73%** |
-| 4× RTX 5090 (TP4) — decode | 106.7 tok/s | **214.4 tok/s** | **+101%** |
-| 4× RTX 5090 (TP4) — prefill 8k | 3 765 tok/s | **5 561 tok/s** | **+48%** |
+| **1× RTX PRO 6000 (96 GB)** | **161 tok/s** | **4 850 tok/s** | +26% / +110% |
+| **2× RTX PRO 6000 (TP2)** | **210 tok/s** | **5 790 tok/s** | +18% / +73% |
+| **4× RTX 5090 (TP4)** | **214 tok/s** | **5 560 tok/s** | +101% / +48% |
 
-MTP acceptance identical across bases (~2.6 tok/step) — the gains are step‑time (upstream
-runner/attention got faster; prefill: upstream FlashInfer SM120 sparse‑MLA replaced our Triton
-path). The v0.24.0 release is broken‑as‑shipped for DS4 on SM120 — the patch carries the fixes
-(DeepGEMM nv‑dev pin, flashinfer 0.6.14, SM12x `cooperative_topk` gate, o_proj einsum scale
-layout, `thread_local` graph capture); details in [docs/v024-port.md](docs/v024-port.md).
+Four consumer 5090s now match two PRO 6000s on decode. MTP acceptance is unchanged across
+bases (~2.6 tok/step) — the deltas are step time, not speculation luck. Full methodology and
+the base‑vs‑base tables: **[docs/v024-port.md](docs/v024-port.md)**.
 
-Numbers below this line are the **v0.19 fork's** (kept for the techniques and methodology;
-warmed coding corpus, so not directly comparable to the table above):
-
-| | hardware | tok/s | context |
-|---|---|---:|---|
-| **Full quality, fast** | 2× RTX PRO 6000 | **177** | **512K** |
-| **On a single card** | 1× RTX PRO 6000 (96 GB) | **109** | 512K |
-| **On consumer GPUs** | 4× RTX 5090 (TP4) | **89** | 512K |
-
-Single‑stream, MTP k=2, warmed coding corpus. Quality matches the official checkpoint
-(**MTP acceptance 2.73 ≥ 2.68**, 12/12 coherent greedy outputs). Full tables below.
+A 96 GB card cannot even load the official checkpoint (FP4 experts + FP8 dense ≈ 149 GiB);
+here it serves it at 161 tok/s.
 
 ---
 
-## How it's fast — the SM120 tuning (any precision)
+## How it fits — 2‑bit experts at FP4 quality
 
-The speed comes from hand‑written SASS kernels (assembled by our own
-[`cubit`](https://github.com/kacper-daftcode/cubit) SM120 assembler — see
-[the toolchain](#the-sm120-toolchain-we-built)) for the paths stock libraries don't serve on
-SM120. They accelerate the **unmodified FP4/FP8 checkpoint** — you don't touch the weights to go
-faster:
-
-| kernel | speedup vs SM120 fallback | effect |
-|---|---:|---|
-| sparse‑MLA prefill (`cubit`) | **2.21×** (over Triton) | cold‑prefill TTFT −15–17% |
-| fp8 MQA‑logits indexer | **~28×** (over f32) | removes the indexer n² → **512K context** on one card |
-| cache‑direct prefill | — | workspace O(query chunk), not O(context) |
-
-Net: the full FP4 checkpoint runs at **177 tok/s on 2× PRO 6000 with the full 512K context
-window** (needle retrieval validated @ 100K/250K/440K).
-
----
-
-## How it fits where FP4 can't — at FP4 quality
-
-The official checkpoint (FP4 experts + FP8 dense, ~149 GiB) needs two 96 GB cards. To run the
-*same model* on **one** card — or **four RTX 5090 gaming cards** — we compress **only the
-experts** to 2 bits (dense stays FP8) and **recover FP4 precision adaptively**, so the
-delivered quality stays at the FP4 level:
+We compress **only the routed experts** to 2 bits (dense stays FP8) and recover FP4 precision
+adaptively:
 
 - **2‑bit expert planes — the sign‑bias finding.** Naive 2‑bit *destroys* this model
   (degenerate loops). The cause is **sign asymmetry**, not error magnitude — the optimal‑L2
   codebook drops one sign's tail and the per‑expert bias compounds over 43 layers. Forcing a
   **sign‑symmetric** `{−4,−1,1,4}` codebook at the same L2 error fixes it entirely (33,023 of
-  33,024 tensors pick it), landing MTP acceptance **at/above** the FP4 experts.
+  33,024 tensors pick it), landing MTP acceptance **at/above** the FP4 experts (2.73 ≥ 2.68 in
+  the original QUANT_PROBE study; ~2.6 reproduced on the v0.24 base). The finding also
+  reproduces on **GLM‑5.2** (180‑tensor sweep: asym bias −0.042, 99% negative; symmetric 392×
+  smaller at equal rel‑RMS) — see below.
 - **FP4 recovery — used surgically.** Decode is HBM‑bound and an FP4 read is 2× the bytes, so
-  2‑bit is the *fast* default and FP4 is spent only where it's needed: a **delta cache** keeps
-  the hot experts at FP4, and a **confidence gate** re‑runs the low‑confidence tokens at FP4
-  (it fires where the 2‑bit and FP4 picks actually differ — 4.2× the base rate at τ=0.60).
-  Result: MTP acceptance and coherence match FP4, multi‑step arithmetic is recovered.
+  2‑bit is the *fast* default: a **delta cache** keeps the hot experts at FP4 (background
+  promote/evict thread, CUDA‑graph‑safe), and a **confidence gate** re‑runs low‑confidence
+  tokens at FP4. *Status on v0.24:* delta cache active; the gate's runner driver is not yet
+  re‑integrated (the decision module ships; re‑forward orchestration is pending).
+- **The kernels.** `moe_w2_mm` (2‑bit MoE GEMM: PRMT‑LUT in‑register decode → `QMMA.SF`
+  block‑scaled tensor cores, 4 CTA/SM) and `moe_w4_mm` (FP4 delta GEMM) — hand‑written SASS,
+  shipped as sources + prebuilt cubins for every sharding (K = 6144/4096/2048/1024/512), so
+  TP2/TP4 work out of the box. Op‑validated (rel ~1–3e‑3, deterministic), graph‑capture‑exact.
 
-So on a single 96 GB card — **with the FP4 recovery on** — the 159B model runs at **109 tok/s**
-with 512K context, matching FP4 on MTP acceptance + coherence (the gate adds per‑token recovery
-at 84). FP4‑level quality comes *from the recovery*, not from the bare 2‑bit base — that's the
-89% floor. Either way it's a model the FP4 checkpoint can't even load on one card.
+Both checkpoint flavors are supported: **FP4 experts** (DeepSeek‑V4‑Flash — codes remap at
+load) and **FP8 block‑quant experts** (Flash‑Base, **GLM‑5.2‑FP8** — re‑quantized to the
+sign‑symmetric codebook at load, float64‑exact vs the reference pipeline).
 
 ---
+
+## The base: vLLM v0.24.0 on SM120
+
+Upstream v0.24.0 ships DeepSeek‑V4 + SM120 natively, which shrank this project from a 43.5k‑line
+fork to a patch — but the release cannot actually serve DS4 on SM120. The patch carries the
+fixes (details in [docs/v024-port.md](docs/v024-port.md)):
+
+- **DeepGEMM**: release pin has no family‑120 host paths ("Unknown SF transformation",
+  einsum/indexer asserts) → pin **nv‑dev `a6b593d2`** (as vLLM main did).
+- **flashinfer**: official 0.6.12 pin predates the SM120 DS4 attention API → **0.6.14**.
+- `cooperative_topk` uses thread‑block **cluster launch** (SM90/100‑only) → gated off on SM12x.
+- o_proj fp8 einsum: SM100 packed scale layout NaNs on SM120 → SM90‑style raw f32 scales.
+- CUDA‑graph capture: `thread_local` error mode on **all four** capture paths (the delta
+  cache's background thread must not invalidate capture).
+
+With the 2‑bit knobs off, the patch is exactly these base fixes — stock behaviour otherwise.
 
 ## Quickstart
 
 ```bash
 git clone https://github.com/kacper-daftcode/vLLM-Moet && cd vLLM-Moet
 
-# current (vLLM v0.24.0 base): official vllm-openai image + our patch + pins + cubins
+# official vllm-openai:v0.24.0 image + patch + pins + SM120 cubins
 DOCKER_BUILDKIT=1 docker build -f Dockerfile.sm120-v024 -t vllm-moet-sm120:v024 .
-# serve command with all knobs: see the header of Dockerfile.sm120-v024
-
-# legacy (v0.19 fork, ~15-25 min source build):
-DOCKER_BUILDKIT=1 docker build -f Dockerfile.sm120 -t vllm-moet-sm120:base .
-MODEL=/path/to/DeepSeek-V4-Flash bash tools/serve.sh 0 8000
 ```
-`VLLM_MOE_W2=0` runs native FP4 (full quality, ≥2 cards); `=1` is the 2‑bit fit. Knobs:
-`VLLM_MOE_W2_DELTA_GB`, `VLLM_MOE_W2_GATE` (gate driver not yet re‑integrated on v0.24 —
-see `docs/v024-port.md`). Legacy fork details → **[BUILD.md](BUILD.md)**.
 
----
+Serve (single 96 GB card, production knobs — same as the benchmark config):
 
-## Full benchmarks
+```bash
+docker run --rm --gpus '"device=0"' --network host --ipc host --shm-size 64g \
+  -v /path/to/DeepSeek-V4-Flash:/model:ro \
+  -e VLLM_MOE_W2=1 -e VLLM_MOE_W2_DELTA_GB=1 \
+  vllm-moet-sm120:v024 \
+  --model /model --served-model-name deepseek-v4-flash --trust-remote-code \
+  --kv-cache-dtype fp8 --block-size 256 --max-model-len 24576 \
+  --gpu-memory-utilization 0.95 --max-num-batched-tokens 1024 --max-num-seqs 4 \
+  --tokenizer-mode deepseek_v4 --no-scheduler-reserve-full-isl \
+  --speculative-config '{"method": "deepseek_mtp", "num_speculative_tokens": 2}' \
+  --compilation-config '{"cudagraph_mode":"FULL_AND_PIECEWISE","custom_ops":["all"]}' \
+  --port 8000
+```
 
-**Throughput** (single‑stream, MTP k=2, warmed coding corpus; continuous decode runs higher):
+`VLLM_MOE_W2=0` = stock FP4 path (needs ≥2 cards). TP: add `--tensor-parallel-size 2|4` and
+`--disable-custom-all-reduce`. The legacy v0.19 fork build lives in
+[BUILD.md](BUILD.md) / `Dockerfile.sm120`.
 
-| run | hardware | experts | tok/s |
-|---|---|---|---:|
-| full FP4 (reference) | 2× PRO 6000 | FP4 | 177 |
-| 2‑bit | 1× PRO 6000 | 2‑bit | 109 |
-| 2‑bit + confidence gate (τ0.60) | 1× PRO 6000 | 2‑bit + FP4 recovery | 84 |
-| 2‑bit | 4× RTX 5090 (TP4) | 2‑bit | 89 |
-| 2‑bit + confidence gate (τ0.60) | 4× RTX 5090 (TP4) | 2‑bit + FP4 recovery | 47 |
+## Quality
 
-The gate's cost depends on interconnect: −23% on one card (109→84) vs −47% on 4×5090 (89→47) —
-no NVLink, so each re‑run re‑forwards across all four cards over PCIe.
+Method: baseline is the untouched official checkpoint; our variant changes only the expert
+codes (same stack, byte‑identical dense/scales/headers), so any delta is the quantization
+alone — see [docs/quality.md](docs/quality.md). Established on the previous base (identical
+quant scheme, same cubins): MTP acceptance 2.73 vs 2.68 FP4 reference, draft accept 86.3% vs
+84.1%, 12/12 coherent greedy outputs; bare 2‑bit agrees with FP4 on 89% of next‑token picks —
+the delta cache + gate close that gap. On v0.24 the acceptance reproduces (~2.6 tok/step);
+long‑context validation (512K needle runs on the fork) is pending re‑run on the new base.
+Standardized functional evals (HumanEval/GSM8K) remain TODO.
 
-**Quality** (vs official FP4 checkpoint): MTP acceptance 2.73 (≥ 2.68), draft accept 86.3% (vs
-84.1%), 12/12 coherent, arithmetic recovered, 512K validated. The bare 2‑bit base agrees with
-FP4 on **89%** of next‑token picks (teacher‑forced; same on 1× and 4×5090 ±0.1%) — that's the
-*floor before recovery*; closing it is what the delta cache and gate do.
+## Next: GLM‑5.2
 
----
-
-## How it works (details)
-
-- **`cubit` SASS kernels** — `moe_w2_mm` (2‑bit MoE GEMM, PRMT‑LUT decode → `QMMA.SF`, tuned to
-  4 CTA/SM), `moe_w4_mm` (FP4 delta GEMM), fused sparse‑MLA (decode+prefill), fp8 MQA‑logits.
-  Both SASS sources (`kernels/sass/`) and prebuilt SM120 cubins (`kernels/cubins-sm120/`) ship;
-  running needs no `cubit`. Op‑validated vs reference (rel ~1–3e‑3), graph‑capture‑exact.
-- **Multi‑GPU.** Under TP each expert's down‑proj splits across GPUs (contraction K 2048 → 1024
-  @ TP2 → 512 @ TP4); each K is a different GEMM with no library kernel, so we generate the
-  cubins from one SASS source. The 4×5090 (K=512) run measures the same 89% fidelity as one
-  card — confirming the shard kernels are numerically equivalent. PP keeps whole layers per rank.
-- **FP4 delta cache** — full FP4 planes pinned on the host (when enabled); a GPU pool **sized to
-  free VRAM** caches the hot experts at FP4 via a background promote/evict thread inside the
-  CUDA graph. (A `need`‑driven pool was tested and rejected: low‑confidence steps route ~96% of
-  experts, so 2‑bit difficulty doesn't concentrate — the useful signal is per‑token, the gate.)
-- **Quality method** — baseline is the untouched official checkpoint; our variant changes only
-  the expert codes (same stack, byte‑identical dense/scales/headers), so any delta is the
-  quantization alone. See [docs/quality.md](docs/quality.md). Standardized functional evals
-  (HumanEval/GSM8K) are the next step.
+The port is GLM‑ready: the FP8→2‑bit load path is golden‑tested against the GLM‑5.2 sweep
+reference, the K=6144 GEMM family (GLM's hidden size) ships in `kernels/`, and the layer
+cutoff follows the model config (78 layers). The sign‑symmetric codebook finding reproduces on
+GLM‑5.2's weights (`internal` sweep, 180 tensors / 16 layers). Bring‑up starts when the
+checkpoint lands (~350 GB).
 
 ## The SM120 toolchain we built
 
@@ -167,15 +141,13 @@ So the stack underneath this repo is end‑to‑end ours:
 kernels here are reachable through stock CUDA on sm_120; this toolchain is what makes them possible.
 
 ## Repository layout
-- **`kernels/`** — SASS (`sass/`) + prebuilt SM120 cubins (`cubins-sm120/`) + generators (`gen/`) + `MANIFEST.md`.
-  Includes the **K=6144** MoE‑GEMM family (gate‑up for GLM‑5.x hidden 6144 — GLM‑5.2 prep).
-- **`tools/serve.sh`** — single launcher (TP/PP, `MOE_W2`/`GATE`/`DELTA_GB` knobs) + probes.
-- **`patch/vllm-moet-v0.24.0.patch`** — **current** runtime delta vs official vLLM `v0.24.0`
-  (18 files, +3.4k lines: 2‑bit/delta/gate modules + hooks in `mxfp4.py`/`fp8.py` + the SM120
-  base fixes). Env pins that go with it: DeepGEMM nv‑dev `a6b593d2`, flashinfer 0.6.14.
-- **`patch/vllm-moet.patch`** — legacy delta vs `v0.19.2rc0` (the old fork; superseded).
-- **`docs/v024-port.md`** — the v0.24 port: dependency pins, SM120 fixes, apply recipe,
-  benchmark methodology.
-- **`Dockerfile.sm120-v024`** — **current** image: official `vllm/vllm-openai:v0.24.0` + patch +
-  DeepGEMM nv‑dev + flashinfer 0.6.14 + cubins (see header for the serve command).
-- **`BUILD.md`** / **`Dockerfile.sm120`** — legacy v0.19 fork build recipe.
+- **`patch/vllm-moet-v0.24.0.patch`** — the delta vs official vLLM `v0.24.0` (18 files,
+  +3.4k lines; applies clean on the tag). Goes with the pins above.
+- **`Dockerfile.sm120-v024`** — the image: official `vllm/vllm-openai:v0.24.0` + patch + pins +
+  cubins.
+- **`kernels/`** — SASS (`sass/`) + prebuilt SM120 cubins (`cubins-sm120/`, incl. the K=6144
+  GLM‑5.x family) + generators (`gen/`) + `MANIFEST.md`.
+- **`docs/v024-port.md`** — the port: pins, SM120 fixes, apply recipe, benchmark methodology.
+- **`docs/quality.md`** — quality methodology.
+- **`BUILD.md`** / **`Dockerfile.sm120`** / **`patch/vllm-moet.patch`** / **`tools/serve.sh`** —
+  the legacy v0.19 fork (kept for reference).
