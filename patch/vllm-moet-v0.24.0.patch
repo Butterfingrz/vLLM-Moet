@@ -1,5 +1,5 @@
 diff --git a/vllm/compilation/breakable_cudagraph.py b/vllm/compilation/breakable_cudagraph.py
-index 6da3ec7..c84958a 100644
+index 6da3ec717..c84958ac0 100644
 --- a/vllm/compilation/breakable_cudagraph.py
 +++ b/vllm/compilation/breakable_cudagraph.py
 @@ -175,10 +175,13 @@ class BreakableCUDAGraphCapture:
@@ -19,7 +19,7 @@ index 6da3ec7..c84958a 100644
          self._capturing = True
  
 diff --git a/vllm/compilation/cuda_graph.py b/vllm/compilation/cuda_graph.py
-index b63d861..3cad1f0 100644
+index b63d86199..3cad1f058 100644
 --- a/vllm/compilation/cuda_graph.py
 +++ b/vllm/compilation/cuda_graph.py
 @@ -314,6 +314,10 @@ class CUDAGraphWrapper:
@@ -34,7 +34,7 @@ index b63d861..3cad1f0 100644
                      # `output` is managed by pytorch's cudagraph pool
                      output = self.runnable(*args, **kwargs)
 diff --git a/vllm/envs.py b/vllm/envs.py
-index 27a85bb..88f310c 100755
+index 27a85bb3d..88f310c4f 100755
 --- a/vllm/envs.py
 +++ b/vllm/envs.py
 @@ -179,6 +179,9 @@ if TYPE_CHECKING:
@@ -65,7 +65,7 @@ index 27a85bb..88f310c 100755
      # JIT all the required kernels before model execution so there is no
      # JIT'ing in the hot-path. However, this warmup increases the engine
 diff --git a/vllm/model_executor/layers/quantization/fp8.py b/vllm/model_executor/layers/quantization/fp8.py
-index 7cdb04c..6481313 100644
+index 7cdb04cfb..64813139b 100644
 --- a/vllm/model_executor/layers/quantization/fp8.py
 +++ b/vllm/model_executor/layers/quantization/fp8.py
 @@ -671,6 +671,21 @@ class Fp8MoEMethod(FusedMoEMethodBase):
@@ -129,7 +129,7 @@ index 7cdb04c..6481313 100644
          assert self.moe_kernel is not None
          return self.moe_kernel.apply(
 diff --git a/vllm/model_executor/layers/quantization/mxfp4.py b/vllm/model_executor/layers/quantization/mxfp4.py
-index 1b2a8a7..3afdb16 100644
+index 1b2a8a74b..3afdb16fd 100644
 --- a/vllm/model_executor/layers/quantization/mxfp4.py
 +++ b/vllm/model_executor/layers/quantization/mxfp4.py
 @@ -617,6 +617,21 @@ class Mxfp4MoEMethod(FusedMoEMethodBase):
@@ -190,7 +190,7 @@ index 1b2a8a7..3afdb16 100644
          assert self.moe_kernel is not None
          return self.moe_kernel.apply(
 diff --git a/vllm/model_executor/layers/quantization/utils/fp8_utils.py b/vllm/model_executor/layers/quantization/utils/fp8_utils.py
-index 32a2d86..3e83d5a 100644
+index 32a2d8689..3e83d5a87 100644
 --- a/vllm/model_executor/layers/quantization/utils/fp8_utils.py
 +++ b/vllm/model_executor/layers/quantization/utils/fp8_utils.py
 @@ -1122,6 +1122,11 @@ def deepgemm_post_process_fp8_weight_block(
@@ -207,7 +207,7 @@ index 32a2d86..3e83d5a 100644
              mn=r,
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_cubit.py b/vllm/model_executor/layers/quantization/utils/moe_w2_cubit.py
 new file mode 100644
-index 0000000..d238842
+index 000000000..d238842b2
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_cubit.py
 @@ -0,0 +1,667 @@
@@ -880,10 +880,10 @@ index 0000000..d238842
 +    return enabled() and _ensure_ready()
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py b/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py
 new file mode 100644
-index 0000000..ba1dac6
+index 000000000..5891fee49
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py
-@@ -0,0 +1,622 @@
+@@ -0,0 +1,691 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""FP4 delta tier for the 1-GPU 2-bit MoE path (quality restoration).
@@ -920,7 +920,19 @@ index 0000000..ba1dac6
 +
 +logger = init_logger(__name__)
 +
-+_GB = float(os.getenv("VLLM_MOE_W2_DELTA_GB", "2.0"))
++# Pool size: a number in GiB, or "auto" (also accepts -1) to defer the pool
++# allocation until AFTER the KV cache is allocated and size it from the VRAM
++# actually free then (minus a reserve for cudagraph capture + workspaces).
++# Auto resolves the delta-vs-KV headroom trade at extreme context lengths:
++# at 512K the KV eats the whole card and auto lands at 0 slots (the manual
++# DELTA_GB=0 rule); at short context it recovers the usual 1-2 GiB pool.
++_GB_RAW = os.getenv("VLLM_MOE_W2_DELTA_GB", "2.0").strip().lower()
++_AUTO = _GB_RAW in ("auto", "-1", "-1.0")
++_GB = 0.0 if _AUTO else float(_GB_RAW)
++# Auto-mode knobs: VRAM to leave free for capture/workspaces, and an optional
++# cap on the auto-sized pool (0 = uncapped).
++_RESERVE_GB = float(os.getenv("VLLM_MOE_W2_DELTA_RESERVE_GB", "3.0"))
++_MAX_GB = float(os.getenv("VLLM_MOE_W2_DELTA_MAX_GB", "0"))
 +_PROMOTE_PER_TICK = int(os.getenv("VLLM_MOE_W2_DELTA_PROMOTE", "8"))
 +_TICK_S = float(os.getenv("VLLM_MOE_W2_DELTA_TICK_MS", "5")) / 1e3
 +
@@ -998,7 +1010,14 @@ index 0000000..ba1dac6
 +        self.w13_bytes = w13_bytes
 +        self.w2_bytes = w2_bytes
 +        self.slot_bytes = w13_bytes + w2_bytes
-+        self.n_slots = max(int(_GB * 2**30) // self.slot_bytes, 8)
++        # Auto mode: the pool is NOT allocated here (weight load runs before
++        # the KV cache is planned). finalize_auto() -- driven by the worker
++        # right after initialize_kv_cache -- sizes it from the VRAM actually
++        # free once KV has taken its share, and always before any cudagraph
++        # capture (the desc kernel bakes pool pointers into the graph).
++        self._auto_pending = _AUTO
++        self.n_slots = 0 if _AUTO else max(
++            int(_GB * 2**30) // self.slot_bytes, 8)
 +        self.pool = torch.empty(self.n_slots, self.slot_bytes, dtype=torch.uint8,
 +                                device=dev)
 +        # device table read by the desc kernel; host mirror for the manager
@@ -1049,9 +1068,14 @@ index 0000000..ba1dac6
 +        # like _freq; the eviction key under _POLICY == "need".
 +        self._need = torch.zeros(n_layers, n_experts, dtype=torch.float32)
 +        self._last_decay = 0
-+        logger.info("moe_w2 delta tier: %d slots x %.1f MiB (%.2f GiB pool)",
-+                    self.n_slots, self.slot_bytes / 2**20,
-+                    self.n_slots * self.slot_bytes / 2**30)
++        if self._auto_pending:
++            logger.info("moe_w2 delta tier: auto-sizing deferred until after "
++                        "KV-cache allocation (slot %.1f MiB, reserve %.1f GiB)",
++                        self.slot_bytes / 2**20, _RESERVE_GB)
++        else:
++            logger.info("moe_w2 delta tier: %d slots x %.1f MiB (%.2f GiB pool)",
++                        self.n_slots, self.slot_bytes / 2**20,
++                        self.n_slots * self.slot_bytes / 2**30)
 +        if _TRACE:
 +            logger.info("moe_w2 delta trace ON: level %d, every %d ticks%s",
 +                        _TRACE, _TRACE_EVERY,
@@ -1061,6 +1085,51 @@ index 0000000..ba1dac6
 +                        _CAPTURE)
 +
 +    # ---- load-time -------------------------------------------------------
++
++    def finalize_auto(self) -> None:
++        """Size + allocate the auto pool from the VRAM free AFTER KV-cache
++        allocation (VLLM_MOE_W2_DELTA_GB=auto). Driven by the worker's
++        initialize_from_config, i.e. after the KV tensors exist and BEFORE any
++        cudagraph capture — the desc kernel bakes `pool`/`slot_table` pointers
++        into the graph, so the pool must not be reallocated after capture.
++
++        Sizing: free VRAM minus _RESERVE_GB (capture + workspace headroom),
++        optionally capped by _MAX_GB, floored at 0 slots (extreme-context
++        configs where KV takes the whole card -> tier inert, exactly like the
++        manual DELTA_GB=0 rule, but without the manual step). No-op unless
++        auto mode is pending."""
++        if not self._auto_pending:
++            return
++        self._auto_pending = False
++        free_b, _ = torch.cuda.mem_get_info(self.dev)
++        budget = free_b - int(_RESERVE_GB * 2**30)
++        if _MAX_GB > 0:
++            budget = min(budget, int(_MAX_GB * 2**30))
++        n = max(budget // self.slot_bytes, 0)
++        if n == 0:
++            # Nothing to cache into -> behave exactly like manual DELTA_GB=0:
++            # release the pinned host store too (tens of GiB of host RAM the
++            # tier can never use; candidates require li in _host, so the
++            # manager and force_promote turn inert).
++            with self._lock:
++                self._host = {}
++            logger.info(
++                "moe_w2 delta tier AUTO: %.2f GiB free after KV < reserve "
++                "%.1f GiB -> pool disabled (0 slots, pure 2-bit; host store "
++                "released)",
++                free_b / 2**30, _RESERVE_GB)
++            return
++        self.n_slots = int(n)
++        self.pool = torch.empty(self.n_slots, self.slot_bytes,
++                                dtype=torch.uint8, device=self.dev)
++        self._owner = [(-1, -1, 0)] * self.n_slots
++        self._free = list(range(self.n_slots))
++        logger.info(
++            "moe_w2 delta tier AUTO: %d slots x %.1f MiB (%.2f GiB pool; "
++            "%.2f GiB was free after KV, reserve %.1f GiB)",
++            self.n_slots, self.slot_bytes / 2**20,
++            self.n_slots * self.slot_bytes / 2**30, free_b / 2**30,
++            _RESERVE_GB)
 +
 +    def add_layer_host_planes(self, layer_key: int, w13_plane_gpu, w2_plane_gpu):
 +        """Stage a layer's fragment-major FP4 planes into pinned host memory.
@@ -1476,7 +1545,7 @@ index 0000000..ba1dac6
 +
 +
 +def enabled() -> bool:
-+    return _GB > 0 and os.getenv("VLLM_MOE_W2_DELTA", "1") == "1"
++    return (_GB > 0 or _AUTO) and os.getenv("VLLM_MOE_W2_DELTA", "1") == "1"
 +
 +
 +def get_tier(n_layers=None, n_experts=256, dev=None,
@@ -1508,7 +1577,7 @@ index 0000000..ba1dac6
 +    return _TIER
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_gate.py b/vllm/model_executor/layers/quantization/utils/moe_w2_gate.py
 new file mode 100644
-index 0000000..c2d518d
+index 000000000..c2d518d2e
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_gate.py
 @@ -0,0 +1,173 @@
@@ -1687,7 +1756,7 @@ index 0000000..c2d518d
 +                fire_rate=(_n_fired / _n_steps if _n_steps else 0.0))
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_planes.py b/vllm/model_executor/layers/quantization/utils/moe_w2_planes.py
 new file mode 100644
-index 0000000..9affee3
+index 000000000..9affee365
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_planes.py
 @@ -0,0 +1,172 @@
@@ -1865,7 +1934,7 @@ index 0000000..9affee3
 +    return vals * s
 diff --git a/vllm/model_executor/layers/quantization/utils/prefill_timers.py b/vllm/model_executor/layers/quantization/utils/prefill_timers.py
 new file mode 100644
-index 0000000..fd83f50
+index 000000000..fd83f500b
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/prefill_timers.py
 @@ -0,0 +1,53 @@
@@ -1924,7 +1993,7 @@ index 0000000..fd83f50
 +                name, _total_ms[name], _count[name])
 diff --git a/vllm/model_executor/layers/quantization/utils/skinny_fp8_cubit.py b/vllm/model_executor/layers/quantization/utils/skinny_fp8_cubit.py
 new file mode 100644
-index 0000000..adf4754
+index 000000000..adf4754de
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/skinny_fp8_cubit.py
 @@ -0,0 +1,238 @@
@@ -2167,7 +2236,7 @@ index 0000000..adf4754
 +    torch.zeros(1, device="cuda")
 +    return _ensure_ready()
 diff --git a/vllm/model_executor/layers/sparse_attn_indexer.py b/vllm/model_executor/layers/sparse_attn_indexer.py
-index fe2b268..d56825e 100644
+index fe2b268cd..d56825ef8 100644
 --- a/vllm/model_executor/layers/sparse_attn_indexer.py
 +++ b/vllm/model_executor/layers/sparse_attn_indexer.py
 @@ -340,6 +340,9 @@ def sparse_attn_indexer(
@@ -2181,7 +2250,7 @@ index fe2b268..d56825e 100644
          use_persistent_topk = current_platform.is_cuda() and topk_tokens in (
              512,
 diff --git a/vllm/models/deepseek_v4/nvidia/ops/o_proj.py b/vllm/models/deepseek_v4/nvidia/ops/o_proj.py
-index 18e3b10..d536692 100644
+index 18e3b1056..d53669202 100644
 --- a/vllm/models/deepseek_v4/nvidia/ops/o_proj.py
 +++ b/vllm/models/deepseek_v4/nvidia/ops/o_proj.py
 @@ -15,13 +15,16 @@ def compute_fp8_einsum_recipe() -> tuple[tuple[int, int, int], bool]:
@@ -2205,7 +2274,7 @@ index 18e3b10..d536692 100644
  
 diff --git a/vllm/v1/attention/backends/mla/cubit_sparse_mla.py b/vllm/v1/attention/backends/mla/cubit_sparse_mla.py
 new file mode 100644
-index 0000000..16d22c7
+index 000000000..16d22c7cd
 --- /dev/null
 +++ b/vllm/v1/attention/backends/mla/cubit_sparse_mla.py
 @@ -0,0 +1,1171 @@
@@ -3382,7 +3451,7 @@ index 0000000..16d22c7
 +    return True
 diff --git a/vllm/v1/attention/backends/mla/sparse_mla_env.py b/vllm/v1/attention/backends/mla/sparse_mla_env.py
 new file mode 100644
-index 0000000..9316141
+index 000000000..931614177
 --- /dev/null
 +++ b/vllm/v1/attention/backends/mla/sparse_mla_env.py
 @@ -0,0 +1,216 @@
@@ -3603,7 +3672,7 @@ index 0000000..9316141
 +    except ValueError:
 +        return 8192
 diff --git a/vllm/v1/worker/gpu/cudagraph_utils.py b/vllm/v1/worker/gpu/cudagraph_utils.py
-index dad1777..1f4b8b9 100644
+index dad1777b4..1f4b8b92b 100644
 --- a/vllm/v1/worker/gpu/cudagraph_utils.py
 +++ b/vllm/v1/worker/gpu/cudagraph_utils.py
 @@ -317,7 +317,12 @@ class CudaGraphManager:
@@ -3621,7 +3690,7 @@ index dad1777..1f4b8b9 100644
                              # Join offloader's copy stream after forward to avoid
                              # unjoined stream error. The last layer's start_prefetch
 diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
-index 74938a8..83378c9 100644
+index 74938a823..83378c9b7 100644
 --- a/vllm/v1/worker/gpu_model_runner.py
 +++ b/vllm/v1/worker/gpu_model_runner.py
 @@ -4,6 +4,7 @@
@@ -3891,7 +3960,7 @@ index 74938a8..83378c9 100644
          self, common_attn_metadata: CommonAttentionMetadata | None
      ) -> bool:
 diff --git a/vllm/v1/worker/gpu_ubatch_wrapper.py b/vllm/v1/worker/gpu_ubatch_wrapper.py
-index 657fc82..dee74ff 100644
+index 657fc8267..dee74ffb4 100644
 --- a/vllm/v1/worker/gpu_ubatch_wrapper.py
 +++ b/vllm/v1/worker/gpu_ubatch_wrapper.py
 @@ -278,6 +278,9 @@ class UBatchWrapper:
@@ -3905,10 +3974,30 @@ index 657fc82..dee74ff 100644
                  ubatch_metadata[0].context.cpu_wait_event.set()
                  for thread in ubatch_threads:
 diff --git a/vllm/v1/worker/gpu_worker.py b/vllm/v1/worker/gpu_worker.py
-index 5e266a3..cd9fa82 100644
+index 5e266a313..13dd68831 100644
 --- a/vllm/v1/worker/gpu_worker.py
 +++ b/vllm/v1/worker/gpu_worker.py
-@@ -905,6 +905,8 @@ class Worker(WorkerBase):
+@@ -616,6 +616,19 @@ class Worker(WorkerBase):
+         ):
+             self.model_runner._init_kv_zero_meta()
+ 
++        # moe_w2 FP4 delta tier, auto pool sizing (VLLM_MOE_W2_DELTA_GB=auto):
++        # the KV cache now exists, so size the pool from the VRAM actually
++        # left over. Must run BEFORE compile_or_warm_up_model — cudagraph
++        # capture bakes the pool pointer into the graphs. No-op unless the
++        # tier exists with auto sizing pending.
++        try:
++            from vllm.model_executor.layers.quantization.utils import (
++                moe_w2_delta)
++            if moe_w2_delta._TIER is not None:
++                moe_w2_delta._TIER.finalize_auto()
++        except Exception as e:  # noqa: BLE001 - opt-in path, never fatal
++            logger.warning("moe_w2 delta auto-sizing failed: %s", e)
++
+     @instrument(span_name="Warmup (GPU)")
+     def compile_or_warm_up_model(self) -> CompilationTimes:
+         warmup_sizes: list[int] = []
+@@ -905,6 +918,8 @@ class Worker(WorkerBase):
              if isinstance(
                  output, ModelRunnerOutput | AsyncModelRunnerOutput | NoneType
              ):
@@ -3917,7 +4006,7 @@ index 5e266a3..cd9fa82 100644
                  return output
  
          assert isinstance(output, IntermediateTensors)
-@@ -921,8 +923,49 @@ class Worker(WorkerBase):
+@@ -921,8 +936,49 @@ class Worker(WorkerBase):
              all_gather_tensors=all_gather_tensors,
          )
  

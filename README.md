@@ -108,7 +108,9 @@ docker run --rm --gpus '"device=0"' --network host --ipc host --shm-size 64g \
 
 `VLLM_MOE_W2=0` = stock FP4 path (needs ≥2 cards). TP: add `--tensor-parallel-size 2|4` and
 `--disable-custom-all-reduce`. Confidence gate: `-e VLLM_MOE_W2_GATE=1`
-(+ optional `VLLM_MOE_W2_GATE_TAU`).
+(+ optional `VLLM_MOE_W2_GATE_TAU`). `VLLM_MOE_W2_DELTA_GB=auto` sizes the FP4 pool from
+the VRAM left after KV allocation (0 at extreme context, ~1.6 GiB at 24K — no manual
+delta-vs-KV bookkeeping; see [docs/v024-port.md](docs/v024-port.md)).
 
 ## Quality
 

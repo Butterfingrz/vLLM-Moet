@@ -100,3 +100,12 @@ secret embedded in filler, greedy): PASS at **102 238 / 256 294 / 453 286 prompt
 `VLLM_MOE_W2=1 VLLM_MOE_W2_DELTA_GB=0` (the FP4 delta pool trades against KV headroom at
 extreme context; with delta 1 GiB use ≤256K). The KV fit comes from DS4's compressed KV +
 upstream's FP8 Lightning‑Indexer cache; vLLM reports 947K cached tokens in this config.
+
+**Delta pool auto‑sizing.** `VLLM_MOE_W2_DELTA_GB=auto` resolves the delta‑vs‑KV trade
+automatically: the pool allocation is deferred until after the KV cache is allocated
+(and before cudagraph capture — the graphs bake the pool pointer), then sized as
+`free VRAM − VLLM_MOE_W2_DELTA_RESERVE_GB` (default 3, capture/workspace headroom),
+optionally capped by `VLLM_MOE_W2_DELTA_MAX_GB`. At extreme context it lands at 0 slots
+(pure 2‑bit, pinned host store released — the manual `DELTA_GB=0` rule, without the manual
+step); at 24K ctx / util 0.95 it recovers a ~1.6 GiB pool (133 slots) and benches at
+166 tok/s single‑stream (1× PRO 6000, MTP k=2, graphs).
