@@ -88,6 +88,12 @@ prefixes defeat the prefix cache). MTP acceptance ~2.6 tok/step in every config.
 | 2× RTX PRO 6000 TP2 | **209.6 tok/s** | **5 791 tok/s** | ~380 tok/s |
 | 4× RTX 5090 TP4 | **214.4 tok/s** | **5 561 tok/s** | ~430 tok/s |
 
+**2026‑07‑09 — AFRAG prefill kernels ship and default on** (fragment‑major activations;
+bit‑identical outputs, 1.30×/1.27× on the K=4096/K=2048 prefill GEMMs). Same 8k‑unique‑prompt
+probe, median of 5: 1× PRO 6000 **4 777 → 5 340 tok/s (+11.8%)**; 4× 5090 TP4 (median of 3)
+5 987 → 6 101 tok/s (+1.9% — the 1024‑token chunks shard per‑rank GEMM work too thin for the
+full kernel win). Opt out with `VLLM_MOE_W2_AFRAG=0`.
+
 Prefill rides upstream's FlashInfer SM120 sparse‑MLA path — which also makes a custom cubit
 MLA‑prefill kernel unnecessary on this base.
 

@@ -1,6 +1,6 @@
 # DeepSeek‑V4‑Flash on Blackwell (SM120)
 
-**Official vLLM v0.24.0 + a 3.7k‑line patch** that (a) makes DeepSeek‑V4‑Flash (159B MoE)
+**Official vLLM v0.24.0 + a 4.2k‑line patch** that (a) makes DeepSeek‑V4‑Flash (159B MoE)
 actually run on consumer/workstation Blackwell — the release is broken‑as‑shipped for DS4 on
 SM120 — and (b) fits it on hardware the FP4 checkpoint can't reach, by compressing the experts
 to **2 bits** with **FP4 recovery**, on hand‑written SM120 SASS kernels.
@@ -12,9 +12,13 @@ Official DeepSeek‑V4‑Flash checkpoint, 2‑bit experts + FP4 delta cache, MT
 
 | hardware | decode | prefill 8k | context |
 |---|---:|---:|---:|
-| **1× RTX PRO 6000 (96 GB)** | **161 tok/s** | **4 850 tok/s** | **512K** |
-| **2× RTX PRO 6000 (TP2)** | **210 tok/s** | **5 790 tok/s** | 512K |
-| **4× RTX 5090 (TP4)** | **214 tok/s** | **5 560 tok/s** | 16K+ |
+| **1× RTX PRO 6000 (96 GB)** | **161 tok/s** | **5 340 tok/s** | **512K** |
+| **2× RTX PRO 6000 (TP2)** | **210 tok/s** | 5 790 tok/s¹ | 512K |
+| **4× RTX 5090 (TP4)** | **214 tok/s** | **6 100 tok/s** | 16K+ |
+
+¹ Prefill on 1× PRO 6000 / TP4 re‑measured 2026‑07‑09 with the **AFRAG** prefill kernels
+(ship + default‑on since then: +11.8% / +1.9% over the 07‑08 numbers); the TP2 entry is the
+07‑08 pre‑AFRAG measurement.
 
 **Batched serving** (aggregate decode tok/s at N concurrent streams; per‑stream in
 parentheses at N=32):
@@ -58,6 +62,10 @@ adaptively:
   block‑scaled tensor cores, 4 CTA/SM) and `moe_w4_mm` (FP4 delta GEMM) — hand‑written SASS,
   shipped as sources + prebuilt cubins for every sharding (K = 6144/4096/2048/1024/512), so
   TP2/TP4 work out of the box. Op‑validated (rel ~1–3e‑3, deterministic), graph‑capture‑exact.
+  Prefill runs the **AFRAG** variant (fragment‑major activations → one `LDG.128` per QMMA
+  A‑fragment; the prefill GEMM is load‑issue‑bound, not DRAM‑bound): bit‑identical outputs,
+  1.3× on the GEMM, **+12% e2e prefill** on one card — default on (`VLLM_MOE_W2_AFRAG=0`
+  opts out).
 
 Both checkpoint flavors are supported: **FP4 experts** (DeepSeek‑V4‑Flash — codes remap at
 load) and **FP8 block‑quant experts** (Flash‑Base, **GLM‑5.2‑FP8** — re‑quantized to the
@@ -160,8 +168,8 @@ So the stack underneath this repo is end‑to‑end ours:
 kernels here are reachable through stock CUDA on sm_120; this toolchain is what makes them possible.
 
 ## Repository layout
-- **`patch/vllm-moet-v0.24.0.patch`** — the delta vs official vLLM `v0.24.0` (18 files,
-  +3.4k lines; applies clean on the tag). Goes with the pins above.
+- **`patch/vllm-moet-v0.24.0.patch`** — the delta vs official vLLM `v0.24.0` (22 files,
+  +4.2k lines; applies clean on the tag). Goes with the pins above.
 - **`Dockerfile.sm120-v024`** — the image: official `vllm/vllm-openai:v0.24.0` + patch + pins +
   cubins.
 - **`kernels/`** — SASS (`sass/`) + prebuilt SM120 cubins (`cubins-sm120/`, incl. the K=6144
