@@ -2113,10 +2113,10 @@ index 000000000..b85e95f78
 +    return enabled() and _ensure_ready()
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py b/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py
 new file mode 100644
-index 000000000..34e0e5d47
+index 000000000..7e1790ce8
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py
-@@ -0,0 +1,818 @@
+@@ -0,0 +1,850 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""FP4 delta tier for the 1-GPU 2-bit MoE path (quality restoration).
@@ -2867,6 +2867,38 @@ index 000000000..34e0e5d47
 +# Mutually exclusive with the FP4 delta tier (they'd fight over `seen`).
 +_BASE_GB = float(os.getenv("VLLM_MOE_W2_BASE_CACHE_GB", "0"))
 +_BASE_TIER: DeltaTier | None = None
++
++# Miss tolerance: a decode step with <= TOL missing routed (layer, expert)
++# pairs keeps its logits (the missing pairs contributed zero) instead of
++# replaying the graph. Rationale: at 99.9% token hit-rate a 600-pair step
++# still has a ~45% chance of >=1 miss, and mandatory replays collapsed
++# GLM-5.2 TP4 from 56.7 to 18.2 tok/s at 74% coverage — while dropping k of
++# ~600 weighted expert contributions is the same approximation class the
++# FP4 delta/gate already trades in. Missing experts are STILL fetched (they
++# join the pool for subsequent steps). 0 = strict (always replay).
++# The _FILE variant is mtime-cached and re-read on change, so a tolerance
++# sweep runs in ONE server (same idiom as the gate's TAU_FILE).
++_BASE_MISS_TOL = int(os.getenv("VLLM_MOE_W2_BASE_MISS_TOL", "0"))
++_BASE_MISS_TOL_FILE = os.getenv("VLLM_MOE_W2_BASE_MISS_TOL_FILE", "")
++_base_tol_dyn = _BASE_MISS_TOL
++_base_tol_mtime = -1.0
++
++
++def base_miss_tol() -> int:
++    global _base_tol_dyn, _base_tol_mtime
++    if not _BASE_MISS_TOL_FILE:
++        return _BASE_MISS_TOL
++    try:
++        m = os.path.getmtime(_BASE_MISS_TOL_FILE)
++        if m != _base_tol_mtime:
++            _base_tol_mtime = m
++            with open(_BASE_MISS_TOL_FILE) as f:
++                _base_tol_dyn = int(f.read().strip())
++            logger.info("moe_w2 base cache: miss tolerance -> %d",
++                        _base_tol_dyn)
++    except (OSError, ValueError):
++        pass
++    return _base_tol_dyn
 +
 +
 +def enabled() -> bool:
@@ -5306,7 +5338,7 @@ index dad1777b4..1f4b8b92b 100644
                              # Join offloader's copy stream after forward to avoid
                              # unjoined stream error. The last layer's start_prefetch
 diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
-index 74938a823..9b6205c25 100644
+index 74938a823..87f745bef 100644
 --- a/vllm/v1/worker/gpu_model_runner.py
 +++ b/vllm/v1/worker/gpu_model_runner.py
 @@ -4,6 +4,7 @@
@@ -5466,7 +5498,7 @@ index 74938a823..9b6205c25 100644
          with record_function_or_nullcontext("gpu_model_runner: postprocess"):
              if self.use_aux_hidden_state_outputs:
                  # True when EAGLE 3 is used.
-@@ -4395,6 +4472,152 @@ class GPUModelRunner(
+@@ -4395,6 +4472,159 @@ class GPUModelRunner(
                  assert broadcasted is not None
                  logits = broadcasted["logits"]
  
@@ -5497,12 +5529,19 @@ index 74938a823..9b6205c25 100644
 +                        torch.distributed.all_reduce(
 +                            _t, op=torch.distributed.ReduceOp.MAX,
 +                            group=_tp.device_group)
-+                        _any_miss = bool(_t.item() > 0)
++                        _max_miss = int(_t.item())
 +                    else:
-+                        _any_miss = _miss > 0
-+                    if _any_miss:
-+                        if _miss > 0:
-+                            _btier.force_promote(max_promote=None)
++                        _max_miss = _miss
++                    # Fetch this rank's missing experts whenever it has any
++                    # (they join the pool for future steps); replay only when
++                    # the worst rank exceeds the tolerance — the same reduced
++                    # max on every rank, so the collective replay stays in
++                    # lockstep. Tolerated steps keep their logits: <= TOL of
++                    # the step's ~top_k*n_layers weighted contributions were
++                    # zeroed (bounded approximation, delta/gate class).
++                    if _miss > 0:
++                        _btier.force_promote(max_promote=None)
++                    if _max_miss > _w2d.base_miss_tol():
 +                        with set_forward_context(
 +                            attn_metadata,
 +                            self.vllm_config,
@@ -5619,7 +5658,7 @@ index 74938a823..9b6205c25 100644
          self.execute_model_state = ExecuteModelState(
              scheduler_output,
              logits,
-@@ -4416,6 +4639,95 @@ class GPUModelRunner(
+@@ -4416,6 +4646,95 @@ class GPUModelRunner(
  
          return None
  
@@ -5715,7 +5754,7 @@ index 74938a823..9b6205c25 100644
      def _input_fits_in_drafter(
          self, common_attn_metadata: CommonAttentionMetadata | None
      ) -> bool:
-@@ -4441,6 +4753,12 @@ class GPUModelRunner(
+@@ -4441,6 +4760,12 @@ class GPUModelRunner(
              # receive sampled token ids from the last PP rank.
              if self.use_async_scheduling and not get_pp_group().is_last_rank:
                  self._pp_receive_prev_sampled_token_ids_to_input_batch()
@@ -5728,7 +5767,7 @@ index 74938a823..9b6205c25 100644
              # In case of PP with kv transfer, we need to pass through the
              # kv_connector_output
              return ModelRunnerOutput.with_kv_conn_output_only(kv_connector_output)
-@@ -4605,6 +4923,23 @@ class GPUModelRunner(
+@@ -4605,6 +4930,23 @@ class GPUModelRunner(
              # tokens on the CPU, so they are run after bookkeeping.
              propose_draft_token_ids(valid_sampled_token_ids)
  
@@ -5752,7 +5791,7 @@ index 74938a823..9b6205c25 100644
          # Finalize KV connector (wait_for_save + clear metadata) after
          # draft model runs. Deferred from target model forward to allow
          # draft model to also save its KV cache.
-@@ -4696,13 +5031,35 @@ class GPUModelRunner(
+@@ -4696,13 +5038,35 @@ class GPUModelRunner(
      def _pp_broadcast_prev_sampled_token_ids(
          self, sampled_token_ids: torch.Tensor
      ) -> None:
@@ -5793,7 +5832,7 @@ index 74938a823..9b6205c25 100644
          # Skip for chunked prefill: sampled tokens are dummy
          # and will be discarded, no need to broadcast.
          if not self._is_all_reqs_chunked_prefill():
-@@ -4711,16 +5068,33 @@ class GPUModelRunner(
+@@ -4711,16 +5075,33 @@ class GPUModelRunner(
              )
  
      def _pp_receive_prev_sampled_token_ids_to_input_batch(self) -> None:
@@ -5831,7 +5870,7 @@ index 74938a823..9b6205c25 100644
  
          # construct `prev_req_id_to_index` here so `_prepare_input_ids`
          # can map req_id -> previous batch row
-@@ -4731,15 +5105,136 @@ class GPUModelRunner(
+@@ -4731,15 +5112,136 @@ class GPUModelRunner(
              if i in discard_req_indices_set:
                  continue
              prev_req_id_to_index[req_id] = i
@@ -5973,7 +6012,7 @@ index 74938a823..9b6205c25 100644
      def take_draft_token_ids(self) -> DraftTokenIds | None:
          if not self.num_spec_tokens or not self._draft_token_req_ids:
              return None
-@@ -5209,6 +5704,22 @@ class GPUModelRunner(
+@@ -5209,6 +5711,22 @@ class GPUModelRunner(
                          )
                          eplb_models += 1
  
@@ -5996,7 +6035,7 @@ index 74938a823..9b6205c25 100644
                  self._setup_eagle3_aux_hidden_state_outputs()
  
                  # Resolve the MoE model, unwrapping VLM wrappers if needed.
-@@ -5969,7 +6480,8 @@ class GPUModelRunner(
+@@ -5969,7 +6487,8 @@ class GPUModelRunner(
              else:
                  hidden_states = outputs
  
@@ -6006,7 +6045,7 @@ index 74938a823..9b6205c25 100644
                  self.speculative_config.use_eagle()
                  or self.speculative_config.uses_draft_model()
                  or self.speculative_config.uses_extract_hidden_states()
-@@ -6875,8 +7387,9 @@ class GPUModelRunner(
+@@ -6875,8 +7394,9 @@ class GPUModelRunner(
          # because some of them change the threshold at init time.
          self.calculate_reorder_batch_threshold()
  
@@ -6018,7 +6057,7 @@ index 74938a823..9b6205c25 100644
              self.speculative_config.use_eagle()
              or self.speculative_config.uses_draft_model()
          ):
-@@ -6929,7 +7442,8 @@ class GPUModelRunner(
+@@ -6929,7 +7449,8 @@ class GPUModelRunner(
          )
  
          # Initialize drafter's cudagraph dispatcher if using spec decode.
