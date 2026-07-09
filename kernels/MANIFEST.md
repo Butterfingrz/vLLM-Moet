@@ -21,8 +21,6 @@ Assemble: `cubit asm sass/<SASS> -o <cubin> --kernel <kernel> --mercury-stub sas
 | `moe_w2_mm_k6144.cubin` | `moe_w2_mm_k6144.sass` | `moe_w2_mm` | 2‑bit MoE GEMM, MC=1, **K=6144** (gate‑up @ hidden 6144 — **GLM‑5.x**) |
 | `moe_w2_mm_mc2_k6144.cubin` | `moe_w2_mm_mc2_k6144.sass` | `moe_w2_mm` | MC=2 (prefill), K=6144 |
 | `moe_w2_mm_mc4_k6144.cubin` | `moe_w2_mm_mc4_k6144.sass` | `moe_w2_mm` | MC=4 (prefill), K=6144 |
-| `moe_w2_mm_mc4afrag_k4096.cubin` | `moe_w2_mm_mc4afrag_k4096.sass` | `moe_w2_mm` | **AFRAG** prefill (fragment‑major A, 1×LDG.128/A‑frag), K=4096 — 1.21× vs MC4, bit‑identical |
-| `moe_w2_mm_mc4afrag_k2048.cubin` | `moe_w2_mm_mc4afrag_k2048.sass` | `moe_w2_mm` | **AFRAG** prefill, K=2048 — 1.22× vs MC4, bit‑identical |
 | `moe_w2_mm_mc4afrag_k4096.cubin` | `moe_w2_mm_mc4afrag_k4096.sass` | `moe_w2_mm` | **AFRAG** (prefill, fragment‑major A), K=4096 |
 | `moe_w2_mm_mc4afrag_k2048.cubin` | `moe_w2_mm_mc4afrag_k2048.sass` | `moe_w2_mm` | AFRAG (prefill), K=2048 |
 | `moe_w2_mm_mc4afrag_k1024.cubin` | `moe_w2_mm_mc4afrag_k1024.sass` | `moe_w2_mm` | AFRAG (prefill), K=1024 (TP2) |

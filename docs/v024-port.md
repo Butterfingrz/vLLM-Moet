@@ -92,7 +92,9 @@ prefixes defeat the prefix cache). MTP acceptance ~2.6 tok/step in every config.
 bit‑identical outputs, 1.30×/1.27× on the K=4096/K=2048 prefill GEMMs). Same 8k‑unique‑prompt
 probe, median of 5: 1× PRO 6000 **4 777 → 5 340 tok/s (+11.8%)**; 4× 5090 TP4 (median of 3)
 5 987 → 6 101 tok/s (+1.9% — the 1024‑token chunks shard per‑rank GEMM work too thin for the
-full kernel win). Opt out with `VLLM_MOE_W2_AFRAG=0`.
+full kernel win). TP2 has **not** been re‑measured with AFRAG yet — the tables carry its
+2026‑07‑08 pre‑AFRAG figure (5 791), which is conservative. Opt out with
+`VLLM_MOE_W2_AFRAG=0`.
 
 Prefill rides upstream's FlashInfer SM120 sparse‑MLA path — which also makes a custom cubit
 MLA‑prefill kernel unnecessary on this base.

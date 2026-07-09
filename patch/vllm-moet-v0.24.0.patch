@@ -285,10 +285,10 @@ index 32a2d8689..3e83d5a87 100644
              mn=r,
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_cubit.py b/vllm/model_executor/layers/quantization/utils/moe_w2_cubit.py
 new file mode 100644
-index 000000000..f211cdf02
+index 000000000..f80a1e018
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_cubit.py
-@@ -0,0 +1,753 @@
+@@ -0,0 +1,797 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Routed experts on 2-bit tensor-sym planes (cubit moe_w2) for the
@@ -311,7 +311,7 @@ index 000000000..f211cdf02
 +
 +VRAM: planes+scales ~1.73 GiB/layer (vs ~3.2 GiB raw fp4) -> 43 layers fit
 +a single 96 GB SM120 board together with the fp8 dense stack and KV.
-+The MTP drafter keeps its original (Marlin) path: layer names containing
++The MTP drafter keeps the stock DeepGEMM-MXFP4 path: layer names containing
 +"mtp" are excluded, matching the QUANT_PROBE protocol (drafter unmodified).
 +"""
 +
@@ -352,12 +352,14 @@ index 000000000..f211cdf02
 +_cu = None
 +_fns: dict = {}
 +_state = "uninit"
-+# PREFILL LEVER (opt-in, default OFF): fragment-major activations so each lane's
-+# m16k32 QMMA A-fragment loads in ONE LDG.128 (vs 8 strided 4-byte loads). Profile
-+# showed prefill moe_w2_mm is L1/load-issue bound (NOT weight-DRAM bound), so this
-+# cuts the dominant load class ~4x at identical occupancy -> ~1.3x prefill GEMM.
-+# Numerics are bit-identical to mc4. Needs moe_w2_mm_mc4afrag_k{K}.cubin present.
-+_AFRAG = os.getenv("VLLM_MOE_W2_AFRAG", "0") == "1"
++# PREFILL LEVER (default ON since the mc4afrag cubins ship): fragment-major
++# activations so each lane's m16k32 QMMA A-fragment loads in ONE LDG.128 (vs 8
++# strided 4-byte loads). Profile showed prefill moe_w2_mm is L1/load-issue bound
++# (NOT weight-DRAM bound), so this cuts the dominant load class ~4x at identical
++# occupancy -> measured 1.30x (K=4096) / 1.27x (K=2048) on the prefill GEMM.
++# Numerics are bit-identical to mc4. Needs moe_w2_mm_mc4afrag_k{K}.cubin present
++# (loader degrades to mc4 when missing). Opt out: VLLM_MOE_W2_AFRAG=0.
++_AFRAG = os.getenv("VLLM_MOE_W2_AFRAG", "1") == "1"
 +_afrag_ok = False
 +
 +
@@ -808,11 +810,49 @@ index 000000000..f211cdf02
 +                             device=dev),
 +            no_slots=torch.full((256,), -1, dtype=torch.int32, device=dev),
 +        )
++        if _afrag_ok:
++            # AFRAG destination buffers: the triton repack streams row-major
++            # a1/a2 into these (single pass, no copy-back); the desc tables
++            # point the GEMM at them instead of a1/a2.
++            _WS.update(
++                a1f=torch.zeros(slots + 4, hidden, dtype=torch.float8_e4m3fn,
++                                device=dev),
++                a2f=torch.zeros(slots + 4, inter, dtype=torch.float8_e4m3fn,
++                                device=dev),
++            )
 +    return _WS
 +
 +
 +import triton
 +import triton.language as tl
++
++
++@triton.jit
++def _afrag_repack_kernel(src_ptr, dst_ptr, K: tl.constexpr):
++    """Row-major fp8 [pairs*16, K] -> AFRAG fragment-major, single pass.
++
++    One program = one (pair, j=k64) 16-row x 64-byte block = 256 u32 words;
++    the permutation [pair, g2, g, j, quad, t, b] -> [pair, j, g, t, quad, g2, b]
++    lands each program's words in one contiguous 1 KiB dst run. Bit-identical
++    to _to_fragment_major (validated), ~3x faster than the torch permute+copy
++    and needs no intermediate tensor."""
++    p = tl.program_id(0)
++    j = tl.program_id(1)
++    w = tl.arange(0, 256)
++    g2 = w & 1
++    quad = (w >> 1) & 3
++    t = (w >> 3) & 3
++    g = (w >> 5) & 7
++    src_off = (p * 16 + g2 * 8 + g) * (K // 4) + j * 16 + quad * 4 + t
++    dst_off = p * 16 * (K // 4) + j * 256 + w
++    tl.store(dst_ptr + dst_off, tl.load(src_ptr + src_off))
++
++
++def _afrag_repack(src: torch.Tensor, dst: torch.Tensor, pairs: int, K: int):
++    """Repack rows [:pairs*16] of `src` (fp8 row-major) into `dst` (AFRAG)."""
++    src32 = src.view(torch.uint8).view(-1).view(torch.int32)
++    dst32 = dst.view(torch.uint8).view(-1).view(torch.int32)
++    _afrag_repack_kernel[(pairs, K // 64)](src32, dst32, K=K)
 +
 +
 +@triton.jit
@@ -962,12 +1002,19 @@ index 000000000..f211cdf02
 +            moe_w2_delta.mark_seen(tier.seen[layer_key], topk_ids.view(-1).long())
 +        slot_row = ws["no_slots"]
 +        pool_ptr = ws["a1"].data_ptr()      # never dereferenced (m4=0)
++    # AFRAG (prefill): the GEMM reads fragment-major activations from the
++    # dedicated a1f/a2f buffers (filled by the single-pass triton repack
++    # below); point the desc 'a' fields there. w4 tables are decode-only,
++    # so redirecting the shared base in prefill is safe.
++    use_afrag = prefill and _afrag_ok
++    a1_base = ws["a1f"] if use_afrag else ws["a1"]
++    a2_base = ws["a2f"] if use_afrag else ws["a2"]
 +    d = ws["desc"]
 +    cap = d.shape[1]
 +    _desc_build_kernel[(triton.cdiv(pairs, 256),)](
 +        expert_blocks, num_post, slot_row, d,
-+        ws["a1"].data_ptr(), ws["as1"].data_ptr(), ws["c13"].data_ptr(),
-+        ws["a2"].data_ptr(), ws["as2"].data_ptr(), ws["c2"].data_ptr(),
++        a1_base.data_ptr(), ws["as1"].data_ptr(), ws["c13"].data_ptr(),
++        a2_base.data_ptr(), ws["as2"].data_ptr(), ws["c2"].data_ptr(),
 +        st["planes13"].data_ptr(), st["sc13"].data_ptr(),
 +        st["planes2"].data_ptr(), st["sc2"].data_ptr(), pool_ptr,
 +        st["planes13"].shape[1], st["sc13"].shape[1],
@@ -983,20 +1030,17 @@ index 000000000..f211cdf02
 +        st["E"], pairs, cap * 6, mblock, BLOCK=256)
 +
 +    # ---- w13 GEMMs (both tiers) -> fused silu*up -> quant -> w2 GEMMs
-+    # AFRAG prefill: repack the activation to fragment-major in-place (desc 'a'
-+    # pointers are unchanged -- only the per-tile byte order differs) so the GEMM
-+    # loads each m16k32 A-fragment in one LDG.128. Numerics bit-identical to mc4.
-+    use_afrag = prefill and _afrag_ok
++    # AFRAG prefill: single-pass triton repack row-major a1/a2 -> fragment-major
++    # a1f/a2f (desc built against a1f/a2f above) so the GEMM loads each m16k32
++    # A-fragment in one LDG.128. Numerics bit-identical to mc4.
 +    w2tier = ("w2mc4afrag" if use_afrag else "w2mc4") if prefill else "w2"
 +    # AFRAG repacks COMPLETE 16-row tiles. `slots` is moe_align's OVER-ALLOCATED
 +    # row count (sorted_ids.numel() = topk*T + E*15), NOT a multiple of 16; the
 +    # desc/kernel only ever touch the first `pairs*16` rows (num_post <= pairs*16),
 +    # so repack exactly that tile-aligned region. Rows [pairs*16:slots] are unused
-+    # filler (left untouched, never read). Capacity is fine: pairs*16 <= slots <=
-+    # a1.shape[0]-4. (Row-major `[:slots]` here would mis-shape -> hard crash.)
-+    n_af = pairs * 16
++    # filler (never read). Capacity is fine: pairs*16 <= slots <= a1.shape[0]-4.
 +    if use_afrag:
-+        ws["a1"][:n_af].copy_(_to_fragment_major(ws["a1"][:n_af], pairs, st["K13"]))
++        _afrag_repack(ws["a1"], ws["a1f"], pairs, st["K13"])
 +    _launch(w2tier, st["K13"], d[0], st["N13"], pairs, stream)
 +    if tier is not None and not prefill:
 +        _launch("w4", st["K13"], d[2], st["N13"], pairs, stream)
@@ -1005,7 +1049,7 @@ index 000000000..f211cdf02
 +    _, qs2 = per_token_group_quant_fp8(act, 128, out_q=ws["a2"][:slots])
 +    ws["as2"][:slots] = qs2
 +    if use_afrag:
-+        ws["a2"][:n_af].copy_(_to_fragment_major(ws["a2"][:n_af], pairs, st["K2"]))
++        _afrag_repack(ws["a2"], ws["a2f"], pairs, st["K2"])
 +    _launch(w2tier, st["K2"], d[1], st["N2"], pairs, stream)
 +    if tier is not None and not prefill:
 +        _launch("w4", st["K2"], d[3], st["N2"], pairs, stream)
@@ -1044,10 +1088,10 @@ index 000000000..f211cdf02
 +    return enabled() and _ensure_ready()
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py b/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py
 new file mode 100644
-index 000000000..5891fee49
+index 000000000..2f797d6bf
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py
-@@ -0,0 +1,691 @@
+@@ -0,0 +1,716 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""FP4 delta tier for the 1-GPU 2-bit MoE path (quality restoration).
@@ -1408,39 +1452,60 @@ index 000000000..5891fee49
 +            self._log_summary()
 +            self._last_summary_tick = self._tick
 +
-+    def _take_slot(self, seen_set):
-+        if self._free:
-+            return self._free.pop()
-+        # evict the least-valuable slot not active this window: least-frequently
-+        # used (freq policy) or coldest last-seen (lru). Both restrict to slots
-+        # cold >= 2 ticks so in-flight graph reads never hit a rewritten slot.
-+        best, best_key = None, None
-+        for s, (li, ei, t) in enumerate(self._owner):
-+            if (li, ei) in seen_set or self._tick - t < 2:
-+                continue
-+            # need: evict the LEAST-needed expert (smallest gate-flag score) so the
-+            # pool retains the experts 2-bit most struggles with. freq: least-freq.
-+            # lru: coldest last-seen.
-+            if _POLICY == "need":
-+                key = float(self._need[li, ei])
-+            elif _POLICY == "freq":
-+                key = float(self._freq[li, ei])
-+            else:
-+                key = t
-+            if best_key is None or key < best_key:
-+                best, best_key = s, key
-+        if best is None:
-+            return None
-+        li, ei, t = self._owner[best]
-+        # unmap FIRST (graphs stop dispatching w4 before bytes change)
-+        self.slot_table[li, ei] = -1
-+        self._mirror[li, ei] = -1
-+        self._n_evicted += 1
-+        self._win_evicted += 1
-+        if _TRACE >= 2:
-+            logger.info("[delta] evict   L%-2d E%-3d  slot %-4d (cold %d ticks)",
-+                        li, ei, best, self._tick - t)
-+        return best
++    def _take_slots_batch(self, k: int) -> list[int]:
++        """Take up to k slots (lock held by caller): free list first, then ONE
++        vectorized eviction pass over all slots. Replaces the old per-slot
++        python scan per promotion — O(n_slots) per TAKEN slot — which at GLM
++        scale (4k slots x hundreds of gate promotions per fire) burned seconds
++        of GIL time per fired step and starved the forward thread.
++
++        Eviction policy is unchanged: least-valuable slot by _POLICY key
++        (need / freq / lru), restricted to slots whose owner is not active in
++        the current seen window (read directly from the _seen_host snapshot —
++        the call sites always passed a set built from exactly that) and cold
++        >= 2 ticks, so in-flight graph reads never hit a rewritten slot.
++        Victims are unmapped here (graphs stop dispatching w4 before bytes
++        change); the caller reserves _owner for each returned slot."""
++        out: list[int] = []
++        while self._free and len(out) < k:
++            out.append(self._free.pop())
++        k_evict = k - len(out)
++        if k_evict <= 0:
++            return out
++        li = torch.tensor([o[0] for o in self._owner], dtype=torch.long)
++        ei = torch.tensor([o[1] for o in self._owner], dtype=torch.long)
++        tk = torch.tensor([o[2] for o in self._owner], dtype=torch.float64)
++        lic, eic = li.clamp(min=0), ei.clamp(min=0)
++        if _POLICY == "need":
++            key = self._need[lic, eic].double()
++        elif _POLICY == "freq":
++            key = self._freq[lic, eic].double()
++        else:
++            key = tk.clone()
++        ineligible = (li < 0) | ((self._tick - tk) < 2)
++        # owner active in the current window -> not evictable
++        ineligible |= self._seen_host[lic, eic].to(torch.bool)
++        key[ineligible] = float("inf")
++        take = min(k_evict, int((~ineligible).sum()))
++        if take > 0:
++            victims = torch.topk(key, take, largest=False).indices.tolist()
++            for s in victims:
++                vli, vei, vt = self._owner[s]
++                self.slot_table[vli, vei] = -1
++                self._mirror[vli, vei] = -1
++                self._n_evicted += 1
++                self._win_evicted += 1
++                if _TRACE >= 2:
++                    logger.info(
++                        "[delta] evict   L%-2d E%-3d  slot %-4d (cold %d ticks)",
++                        vli, vei, s, self._tick - vt)
++                out.append(s)
++        return out
++
++    def _take_slot(self, seen_set=None):
++        """Single-slot wrapper (kept for the unit tests / external callers)."""
++        slots = self._take_slots_batch(1)
++        return slots[0] if slots else None
 +
 +    def _promote(self, li, ei, slot):
 +        with torch.cuda.stream(self._stream):
@@ -1499,6 +1564,14 @@ index 000000000..5891fee49
 +        seen = self._seen_host.nonzero()
 +        if seen.numel() == 0:
 +            return 0
++        # Bound the working set to RECENT steps: `seen` otherwise accumulates
++        # up to 4 manager ticks of routings (the manager zeroes it lazily), so
++        # on deep/wide models a single fire tried to force-promote every
++        # expert routed in the whole window (GLM-5.2: 75 layers x top-8 ->
++        # 600+/step, measured 200-1400 per fire = up to ~6 GiB synchronous
++        # H2D). Zeroing after the snapshot is the manager's own idiom; a flag
++        # lost to the in-flight scatter race only delays a lazy promotion.
++        self.seen.zero_()
 +        layer_filter = set(layers) if layers is not None else None
 +        with self._lock:
 +            seen_set = set()
@@ -1526,20 +1599,16 @@ index 000000000..5891fee49
 +                cand = [cand[i] for i in order.tolist()]
 +            if max_promote is not None:
 +                cand = cand[:max_promote]
-+            # take slots (default stream: evictions unmap on the forward stream),
-+            # issue all copies on the side stream, then a SINGLE sync before
-+            # mapping — bytes resident before any graph replay can read them.
++            # take ALL slots in one vectorized batch (evictions unmap on the
++            # forward stream), issue all copies on the side stream, then a
++            # SINGLE sync before mapping — bytes resident before any graph
++            # replay can read them. The batch returns distinct slots, and each
++            # gets its _owner reserved before the copies, so a concurrent
++            # manager tick can never hand one of them out again (two experts
++            # -> one slot -> pool corruption; see the force_promote history).
++            slots = self._take_slots_batch(len(cand))
 +            plan = []
-+            for li, ei in cand:
-+                slot = self._take_slot(seen_set)
-+                if slot is None:
-+                    break  # pool full of hot/in-flight slots; promote what we can
-+                # RESERVE the slot's owner IMMEDIATELY: _take_slot's eviction
-+                # scans _owner for victims, so without this a later iteration in
-+                # THIS loop could hand out the same just-taken slot again (two
-+                # experts -> one slot -> one reads the other's weights -> pool
-+                # corruption). Owner tick == current tick also cold-protects it.
-+                # GPU slot_table/_mirror writes stay deferred until after the sync.
++            for (li, ei), slot in zip(cand, slots):
 +                self._owner[slot] = (li, ei, self._tick)
 +                with torch.cuda.stream(self._stream):
 +                    self.pool[slot].copy_(self._host[li][ei], non_blocking=True)
@@ -1741,10 +1810,10 @@ index 000000000..5891fee49
 +    return _TIER
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_gate.py b/vllm/model_executor/layers/quantization/utils/moe_w2_gate.py
 new file mode 100644
-index 000000000..c2d518d2e
+index 000000000..8891cf5fd
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_gate.py
-@@ -0,0 +1,173 @@
+@@ -0,0 +1,182 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Confidence-gated FP4 re-forward for the 2-bit MoE path (directive 2 / Step B).
@@ -1781,7 +1850,16 @@ index 000000000..c2d518d2e
 +                           0.70-0.80 for more recall once a functional eval confirms
 +                           the FP4 upgrades are correct; lower to 0.50 if marginal.
 +  VLLM_MOE_W2_GATE_MAX_PROMOTE  cap experts force-promoted per fired step
-+                                (0 = unlimited, default).
++                                (default 64; 0 = unlimited). The cap bounds
++                                the fire cost: each promote is a synchronous
++                                H2D plane copy, and deep/wide models route
++                                600+ (layer, expert) pairs per step (GLM-5.2:
++                                unlimited fires measured 200-1400 promotes =
++                                up to ~6 GiB H2D and a 56->3 tok/s collapse;
++                                64 caps it at ~0.3 GiB). Most-needed experts
++                                are promoted first, and promotions persist,
++                                so repeated fires still converge to FP4
++                                coverage of the hard set.
 +  VLLM_MOE_W2_GATE_TRACE   0 (default) | 1 log each fire/re-forward.
 +"""
 +
@@ -1797,7 +1875,7 @@ index 000000000..c2d518d2e
 +_SIGNAL = os.getenv("VLLM_MOE_W2_GATE_SIGNAL", "max_prob")
 +_DEFAULT_TAU = {"max_prob": 0.60, "margin": 1.5}
 +_TAU = float(os.getenv("VLLM_MOE_W2_GATE_TAU", str(_DEFAULT_TAU.get(_SIGNAL, 0.60))))
-+_MAX_PROMOTE = int(os.getenv("VLLM_MOE_W2_GATE_MAX_PROMOTE", "0"))
++_MAX_PROMOTE = int(os.getenv("VLLM_MOE_W2_GATE_MAX_PROMOTE", "64"))
 +_TRACE = os.getenv("VLLM_MOE_W2_GATE_TRACE", "0") == "1"
 +# Measurement mode: on a fired step, COUNT routed experts (delta._need) instead of
 +# promoting/re-forwarding -> study whether 2-bit difficulty concentrates on few

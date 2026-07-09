@@ -1,6 +1,6 @@
 # DeepSeek‑V4‑Flash on Blackwell (SM120)
 
-**Official vLLM v0.24.0 + a 4.2k‑line patch** that (a) makes DeepSeek‑V4‑Flash (159B MoE)
+**Official vLLM v0.24.0 + a 4.3k‑line patch** that (a) makes DeepSeek‑V4‑Flash (159B MoE)
 actually run on consumer/workstation Blackwell — the release is broken‑as‑shipped for DS4 on
 SM120 — and (b) fits it on hardware the FP4 checkpoint can't reach, by compressing the experts
 to **2 bits** with **FP4 recovery**, on hand‑written SM120 SASS kernels.
@@ -13,7 +13,7 @@ Official DeepSeek‑V4‑Flash checkpoint, 2‑bit experts + FP4 delta cache, MT
 | hardware | decode | prefill 8k | context |
 |---|---:|---:|---:|
 | **1× RTX PRO 6000 (96 GB)** | **161 tok/s** | **5 340 tok/s** | **512K** |
-| **2× RTX PRO 6000 (TP2)** | **210 tok/s** | **5 790 tok/s** | 512K |
+| **2× RTX PRO 6000 (TP2)** | **210 tok/s** | **5 790 tok/s** (pre‑AFRAG) | 512K |
 | **4× RTX 5090 (TP4)** | **214 tok/s** | **6 100 tok/s** | 16K+ |
 
 **Batched serving** (aggregate decode tok/s at N concurrent streams; per‑stream in
@@ -144,9 +144,12 @@ drafter embedding share across PP ranks — DeepSeek‑V4‑Flash on 4× RTX 509
 ## The SM120 toolchain we built
 
 These kernels exist only because we first built the assembler and the ISA data they need.
-Consumer Blackwell (sm_120) has **no public SASS toolchain**, and CUDA's `sm_120` path doesn't
-expose the block‑scaled MMA forms (`QMMA.SF`, the FP4/FP6 type codes) these kernels are built on.
-So the stack underneath this repo is end‑to‑end ours:
+Consumer Blackwell (sm_120) has **no public SASS toolchain**. Current CUDA does expose the
+block‑scaled MMA *instruction* itself (PTX `kind::mxf8f6f4` compiles to `QMMA.SF` — DeepGEMM's
+SM120 port uses it), but everything these kernels are actually made of — hand scheduling
+against measured latencies and control words, the PRMT‑LUT decode interleaved into the QMMA
+stream, register‑bank and occupancy shaping (regcount 64 → 4 CTA/SM) — is decided by ptxas
+and unreachable from CUDA/PTX. So the stack underneath this repo is end‑to‑end ours:
 
 - **[`blackwell-isa`](https://github.com/kacper-daftcode/blackwell-isa)** — a machine‑readable
   **SM120 SASS ISA database**: 1,994 instruction forms, 128‑bit encoding templates + operand/
@@ -161,11 +164,12 @@ So the stack underneath this repo is end‑to‑end ours:
 
 **ISA ([`blackwell-isa`](https://github.com/kacper-daftcode/blackwell-isa)) → assembler
 ([`cubit`](https://github.com/kacper-daftcode/cubit)) → SASS kernels → this vLLM.** None of the
-kernels here are reachable through stock CUDA on sm_120; this toolchain is what makes them possible.
+kernels here can be *written* through stock CUDA on sm_120 — the instructions compile, the
+kernels don't; this toolchain is what makes them possible.
 
 ## Repository layout
 - **`patch/vllm-moet-v0.24.0.patch`** — the delta vs official vLLM `v0.24.0` (22 files,
-  +4.2k lines; applies clean on the tag). Goes with the pins above.
+  +4.3k lines; applies clean on the tag). Goes with the pins above.
 - **`Dockerfile.sm120-v024`** — the image: official `vllm/vllm-openai:v0.24.0` + patch + pins +
   cubins.
 - **`kernels/`** — SASS (`sass/`) + prebuilt SM120 cubins (`cubins-sm120/`, incl. the K=6144
