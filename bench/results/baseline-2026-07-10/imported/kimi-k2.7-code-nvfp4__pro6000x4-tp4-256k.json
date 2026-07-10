@@ -6,7 +6,7 @@
  "suite": "standard",
  "provenance": "imported",
  "status": "ok",
- "source": "docs/kimi-k27-code-plan.md section 0 (2026-07-10)",
+ "source": "docs/kimi-k27-code.md measured results (2026-07-10)",
  "summary": "4x RTX PRO 6000 TP4 - GPU-resident 2-bit + FP4 delta, 256K window",
  "context": 262144,
  "probes": {

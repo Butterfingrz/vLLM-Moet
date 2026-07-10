@@ -1,5 +1,5 @@
 # Kimi-K2.7-Code TP4 + the AQ-MedAI Eagle3 community drafter (+12% median,
-# high run-to-run variance - see docs/kimi-k27-code-plan.md P6).
+# high run-to-run variance - see docs/kimi-k27-code.md, Eagle3 section).
 id: kimi-k2.7-code-nvfp4/pro6000x4-tp4-eagle3
 model: Kimi-K2.7-Code-NVFP4
 served_name: kimi-k2.7-code

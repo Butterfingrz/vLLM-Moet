@@ -122,7 +122,7 @@ installs it).
   degeneration check, and all texts land in the result JSON for review.
 - **spec decode** — acceptance length / draft-acceptance are scraped from the
   server log right after the decode probe. When A/B-ing speculative variants,
-  bench with `VLLM_MOE_W2_DELTA_GB=0` (see `docs/kimi-k27-code-plan.md`:
+  bench with `VLLM_MOE_W2_DELTA_GB=0` (see `docs/kimi-k27-code.md`:
   the delta tier's runtime precision changes perturb acceptance).
 - Cache-tier configs (BASE cache) converge over traffic: recipes set
   `warmup.decode_requests` so the pool is warm before measurement, and pool

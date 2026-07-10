@@ -6,7 +6,7 @@
  "suite": "standard",
  "provenance": "imported",
  "status": "ok",
- "source": "docs/kimi-k27-code-plan.md section 0 (2026-07-10)",
+ "source": "docs/kimi-k27-code.md measured results (2026-07-10)",
  "summary": "2x RTX PRO 6000 TP2 - host-resident base, 52 GiB/rank cache (~39% coverage)",
  "context": 16384,
  "probes": {

@@ -58,5 +58,5 @@ tuning:
 notes: |
   Routing concentration at 384 experts top-8 is a different regime than
   DS4/GLM - the 19%-coverage~=96%-hit heuristic must be re-established here
-  (docs/kimi-k27-code-plan.md P5). Pool hit-rate log lines are attached to
-  the result for exactly that.
+  (docs/kimi-k27-code.md, BASE-cache section). Pool hit-rate log lines are
+  attached to the result for exactly that.

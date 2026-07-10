@@ -396,8 +396,8 @@ round‑trip works. Serve recipe and
 the bring‑up findings (a checkpoint‑specific **zero‑sign balancing** fix the sweep gate
 caught — the INT4→NVFP4 export writes all exact zeros as +0, which would inject 3× the
 bias that degenerates GLM; an SM12x smem fix for dense‑MLA triton decode; a
-single‑chunk‑context workaround for >64K prompts):
-**[docs/kimi-k27-code-plan.md](docs/kimi-k27-code-plan.md)**.
+`merge_attn_states` stride fix for >64K chunked prefill):
+**[docs/kimi-k27-code.md](docs/kimi-k27-code.md)**.
 
 ## Benchmark results
 

@@ -6,7 +6,7 @@
  "suite": "standard",
  "provenance": "imported",
  "status": "ok",
- "source": "docs/kimi-k27-code-plan.md P6 Eagle3 trial (2026-07-10)",
+ "source": "docs/kimi-k27-code.md Eagle3 A/B (2026-07-10)",
  "summary": "4x RTX PRO 6000 TP4 - + Eagle3 drafter (k=3, drafter TP4)",
  "context": 262144,
  "probes": {

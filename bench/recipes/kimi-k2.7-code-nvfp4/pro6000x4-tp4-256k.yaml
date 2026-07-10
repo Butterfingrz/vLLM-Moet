@@ -1,5 +1,5 @@
 # Kimi-K2.7-Code (1T) TP4, full native 256K window - the headline config.
-# Validated bring-up: docs/kimi-k27-code-plan.md section 0.
+# Validated bring-up: docs/kimi-k27-code.md (measured results).
 id: kimi-k2.7-code-nvfp4/pro6000x4-tp4-256k
 model: Kimi-K2.7-Code-NVFP4
 served_name: kimi-k2.7-code
