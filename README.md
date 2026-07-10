@@ -41,8 +41,8 @@ pipeline on real shards. Single‑stream, greedy, CUDA graphs (2026‑07‑09/10
   a small gate‑filled FP4 pool for precision. With MTP k=2 (acceptance 3.0) and miss‑tolerance
   8: **45–52 tok/s** (strict zero‑tolerance: 21–24). Needle 4/4 PASS across the window.
   Bare‑2‑bit quality artifacts ("capital of Poland: Krakow", garbled Polish) are corrected by
-  the FP4 tier. The window is KV‑budget‑bound, not architectural — the record run gave KV
-  8 GiB; the same box boots 262K windows on the nvfp4 KV cache (retrieval validation pending).
+  the FP4 tier. The window is KV‑budget‑bound, not architectural — the record config simply
+  allotted KV 8 GiB/rank; a larger window trades against expert‑cache coverage.
 - **NVFP4 KV cache** (`--kv-cache-dtype nvfp4`): packed 352 B/token vs 656 B `fp8_ds_mla` —
   **+38% KV pool** (415K → 571K tokens at equal settings) at decode parity, or the freed VRAM
   goes to the FP4 pool (the standing 4‑card config runs a 19.6 GiB/GPU pool + 175K‑token KV).
