@@ -27,11 +27,11 @@ checkpoint (433 GB): the loader re‑quantizes modelopt NVFP4 experts (e2m1 × e
 per‑tensor scale_2) to the sign‑symmetric 2‑bit planes at load — f64‑exact vs the reference
 pipeline on real shards. Single‑stream, greedy, CUDA graphs:
 
-| hardware | config | decode | context window (served, needle‑validated) |
-|---|---|---:|---:|
-| **4× RTX PRO 6000 (TP4)** | 2‑bit + **MTP k=2** | **105 tok/s** | 128K (needle to 126K nvfp4 / 276K fp8; 331K fits) |
-| 4× RTX PRO 6000 (TP4) | + FP4 delta + confidence gate | **83–85 tok/s** | 128K |
-| **2× RTX PRO 6000 (TP2)** | **three‑tier + NVMe stores** + MTP + gate | **28–32 tok/s** | **128K** (needle PASS to 121K) |
+| hardware | config | decode | max context window (served, needle‑validated) | host RAM |
+|---|---|---:|---:|---:|
+| **4× RTX PRO 6000 (TP4)** | 2‑bit + **MTP k=2** | **105 tok/s** | **256K** | — |
+| 4× RTX PRO 6000 (TP4) | 2‑bit + MTP k=2 + **FP4 delta + confidence gate** | **83–85 tok/s** | 128K | — |
+| **2× RTX PRO 6000 (TP2)** | **three‑tier + NVMe stores** + MTP + gate | **28–32 tok/s** | **128K** | **~140 GiB** |
 
 - **4 cards:** prefill ~2.5k tok/s; MTP acceptance 2.3–2.8; needle retrieval **PASS to 126K**
   on the nvfp4 KV cache and **to 276K** on fp8 (331K window fits at util 0.95). GLM's nominal
@@ -57,12 +57,16 @@ pipeline on real shards. Single‑stream, greedy, CUDA graphs:
 Official checkpoint, 2‑bit experts + FP4 delta cache, MTP k=2, CUDA graphs (single‑stream
 medians; prefill = 8k‑token prompt, uncached):
 
-| hardware | decode | prefill 8k | context window (served, needle‑validated) |
-|---|---:|---:|---:|
-| **1× RTX PRO 6000 (96 GB)** | **161 tok/s** | **5 340 tok/s** | **512K** (needle PASS to 453K; 947K‑token KV measured) |
-| 2× RTX PRO 6000 (TP2) | 210 tok/s | 5 790 tok/s | 512K |
-| 4× RTX 5090 (TP4) | 214 tok/s | 6 100 tok/s | 16K as benched (84K‑token KV measured at boot) |
-| **1× RTX 5090 (32 GB)** | **~31 tok/s** (14 GiB pool + NVMe stores, ~30 GiB host RAM) | ~400–540 tok/s | **32K** (needle PASS at 29.7K; 131K‑token KV measured) |
+| hardware | decode | prefill 8k | max context window (served, needle‑validated) | host RAM |
+|---|---:|---:|---:|---:|
+| **1× RTX PRO 6000 (96 GB)** | **161 tok/s** | **5 340 tok/s** | **512K** | — |
+| 2× RTX PRO 6000 (TP2) | 210 tok/s | 5 790 tok/s | 512K | — |
+| 4× RTX 5090 (TP4) | 214 tok/s | 6 100 tok/s | 16K | — |
+| **1× RTX 5090 (32 GB)** | **~31 tok/s** (14 GiB pool + NVMe stores) | ~400–540 tok/s | **32K** | **~30 GiB** |
+
+Retrieval behind the window column: needle PASS at 453K on the PRO 6000 (947K‑token KV
+measured) and at 29.7K on the single 5090 (131K‑token KV). "—" in host RAM = all‑VRAM
+config, no host expert store.
 
 **Batched serving** (aggregate decode tok/s at N concurrent streams; per‑stream in
 parentheses at N=32):
@@ -167,9 +171,9 @@ into per‑rank **pack files**: raw rows at `(layer·E + expert) · stride`, 4 K
 sidecar with shapes and the layers written. Three things fall out:
 
 - **The RAM wall falls.** Single‑5090 DS4 no longer needs ~80 GiB of free host RAM
-  (EngineCore RSS 42–44 → 26–33 GiB measured), and GLM TP2's expert stores go
-  **~568 → ~136 GiB** host RAM — the config fits hosts that could never hold the pinned
-  stores.
+  (measured host RAM of the serving process: 42–44 → 26–33 GiB), and GLM TP2's expert
+  stores go **~568 → ~136 GiB** host RAM — the config fits hosts that could never hold the
+  pinned stores.
 - **The pack is a persistent quantization cache.** The first boot writes it while
   quantizing; every later boot **skips the dequant→re‑quant entirely** and serves experts
   straight from the pack — GLM TP2 boots in **~7 min instead of ~11** and skips the
@@ -184,7 +188,7 @@ sidecar with shapes and the layers written. Three things fall out:
 The three selectable host‑store backends, benched head‑to‑head (DS4 1× 5090, 11 GiB GPU
 pool, MTP k=2, same box and bench):
 
-| host store | decode | EngineCore RSS |
+| host store | decode | host RAM (process RSS) |
 |---|---:|---:|
 | pinned — all 73 GiB in RAM (default) | 33.0 tok/s | 42–44 GiB |
 | pack only — page cache as the RAM tier | 25.5 tok/s | 15 GiB |
