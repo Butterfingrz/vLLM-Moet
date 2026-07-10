@@ -25,7 +25,7 @@ carry it:
 Served from the official [nvidia/GLM-5.2-NVFP4](https://huggingface.co/nvidia/GLM-5.2-NVFP4)
 checkpoint (433 GB): the loader re‑quantizes modelopt NVFP4 experts (e2m1 × e4m3 block‑16 ×
 per‑tensor scale_2) to the sign‑symmetric 2‑bit planes at load — f64‑exact vs the reference
-pipeline on real shards. Single‑stream, greedy, CUDA graphs (2026‑07‑09/10):
+pipeline on real shards. Single‑stream, greedy, CUDA graphs:
 
 | hardware | config | decode | context window (served, needle‑validated) |
 |---|---|---:|---:|
@@ -43,11 +43,11 @@ pipeline on real shards. Single‑stream, greedy, CUDA graphs (2026‑07‑09/10
   pool for precision (expert stores need ~136 GiB host RAM instead of ~568 pinned). The
   single‑user window is real: `--max-model-len 131072` with 8 GiB/rank KV = **157K tokens of
   KV measured**, needle retrieval **4/4 PASS at 36K / 86K / 121K prompt tokens** (fp8 KV,
-  tol=0). Decode, measured 2026‑07‑10 on the shipped stack (adaptive replay, MTP k=2,
-  acceptance ~2.9): **28.3 tok/s** strict (tol=0), **31.7** at miss‑tolerance 8 — arithmetic
-  and retrieval probes clean at both. Bare‑2‑bit quality artifacts ("capital of Poland:
-  Krakow", garbled Polish) are corrected by the FP4 tier. A second boot serves from the
-  quantization packs in **~7 min vs ~11** (no re‑quant, no ~405 GiB staging transient).
+  tol=0). Decode (MTP k=2, acceptance ~2.9): **28.3 tok/s** strict (tol=0), **31.7** at
+  miss‑tolerance 8 — arithmetic and retrieval probes clean at both. Bare‑2‑bit quality
+  artifacts ("capital of Poland: Krakow", garbled Polish) are corrected by the FP4 tier.
+  Booting from existing quantization packs takes **~7 min** (vs ~11 for a full
+  re‑quantizing load, which also stages ~405 GiB of transients).
 - **NVFP4 KV cache** (`--kv-cache-dtype nvfp4`): packed 352 B/token vs 656 B `fp8_ds_mla` —
   **+38% KV pool** (415K → 571K tokens at equal settings) at decode parity, or the freed VRAM
   goes to the FP4 pool (the standing 4‑card config runs a 19.6 GiB/GPU pool + 175K‑token KV).
@@ -129,9 +129,9 @@ expert's contribution and bumps an in‑graph miss counter; the runner fetches *
 routed experts in one batched pinned‑H2D transfer (51.6 GiB/s here; a 64‑expert fetch ≈ 3 ms)
 and replays the step's graph once — **bit‑identical** to a fully resident forward
 (unit‑tested). A **miss‑tolerance knob** (`VLLM_MOE_W2_BASE_MISS_TOL=k`, runtime‑tunable)
-skips the replay when ≤ k of the step's ~600 routings miss — at 51% coverage that's ~2×
-decode (21→44 tok/s on GLM TP2) with no systematic quality change observed (probes: PL
-coherence, retrieval; quantitative eval pending).
+skips the replay when ≤ k of the step's ~600 routings miss — +12% decode on GLM TP2 at
+tol 8 (28.3 → 31.7 tok/s) with clean quality probes (arithmetic, PL coherence, needle
+retrieval; quantitative eval pending).
 
 **Pool size is the dominant knob — treat it as a config KPI.** The mandatory replay is paid
 *per step*, so decode tracks the fraction of **zero‑miss steps**, which falls off a cliff
@@ -142,14 +142,13 @@ same box, same bench): 11 GiB pool / util 0.90 = **27–28 tok/s**, 14 GiB / uti
 500 steps). If replay % runs high, grow `VLLM_MOE_W2_BASE_CACHE_GB` (and free VRAM for it,
 e.g. `--gpu-memory-utilization 0.95`) before touching any other knob.
 
-**Misses are restored to a deterministic fixed point — adaptively.** A replayed step can
-re‑route onto experts the first pass never fetched (second‑order misses); the runner now
-re‑checks after each replay and keeps replaying **only while the step is within
-`VLLM_MOE_W2_FP_THRESH` of miss‑free** (default 0 = the mandatory first‑order restore only;
-the threshold is runtime‑tunable via `VLLM_MOE_W2_FP_THRESH_FILE`). Measured on GLM TP2 by
-flipping the file on a live server: thresh 16 → 19.2 tok/s, thresh 0 → **28.3 tok/s** with
-identical quality probes — chasing second‑order residue cost ~35% decode for zeros the
-pre‑fix stack silently kept anyway. Residue is KPI‑visible (`fp-residue`).
+**Misses are restored adaptively.** A replayed step can re‑route onto experts the first
+pass never fetched (second‑order misses); the runner re‑checks after each replay and keeps
+replaying **only while the step is within `VLLM_MOE_W2_FP_THRESH` of miss‑free** (default 0
+= the mandatory first‑order restore only, the throughput‑optimal setting; raising it buys
+bit‑deterministic fixed points on converged working sets at a decode cost — runtime‑tunable
+via `VLLM_MOE_W2_FP_THRESH_FILE`). The accepted residue is second‑order only and
+KPI‑visible (`fp-residue`).
 
 Results: **DeepSeek‑V4‑Flash 159B on one RTX 5090** (72.7 GiB of 2‑bit planes vs 32 GB of
 VRAM): ~31 tok/s steady with MTP, 32K window served, coherent — and ~30 GiB of host RAM
@@ -173,20 +172,21 @@ sidecar with shapes and the layers written. Three things fall out:
   stores.
 - **The pack is a persistent quantization cache.** The first boot writes it while
   quantizing; every later boot **skips the dequant→re‑quant entirely** and serves experts
-  straight from the pack. GLM TP2 second boot: **408 s vs ~11 min** (150 layer requants
-  skipped, no ~405 GiB staging transient). Stale packs (shape/config mismatch) rebuild
-  automatically; layers absent from a pack (e.g. the MTP drafter) quantize as before.
+  straight from the pack — GLM TP2 boots in **~7 min instead of ~11** and skips the
+  ~405 GiB staging transient. Stale packs (shape/config mismatch) rebuild automatically;
+  layers absent from a pack (e.g. the MTP drafter) quantize as before.
 - **Decode stays at pinned parity — give it an arena.** `VLLM_MOE_W2_BASE_RAM_GB=<GiB|auto>`
   pins an MRU **arena** over the base pack: arena hits are zero‑copy pinned views (H2D DMAs
   straight from the arena — no syscall, no memcpy), misses read through the page cache into
   the arena slot. The arena behaves as a victim cache of the GPU pool (85% of fetches served
   from RAM at 27% arena coverage on DS4).
 
-Same‑night A/B (DS4 1× 5090, 11 GiB GPU pool, MTP k=2):
+The three selectable host‑store backends, benched head‑to‑head (DS4 1× 5090, 11 GiB GPU
+pool, MTP k=2, same box and bench):
 
 | host store | decode | EngineCore RSS |
 |---|---:|---:|
-| pinned — all 73 GiB in RAM | 33.0 tok/s | 42–44 GiB |
+| pinned — all 73 GiB in RAM (default) | 33.0 tok/s | 42–44 GiB |
 | pack only — page cache as the RAM tier | 25.5 tok/s | 15 GiB |
 | pack + **20 GiB pinned arena** | **32.8 tok/s (parity)** | 26–33 GiB |
 
@@ -206,7 +206,7 @@ Operational notes:
   boot (SSD wear is a non‑issue). The dir must be a real filesystem via bind mount — **not
   overlayfs** (the container filesystem).
 - **You don't need a fast drive for steady decode.** Misses are buffered reads, so the page
-  cache acts as an opportunistic L3 under the arena — parity above was measured with the
+  cache acts as an opportunistic L3 under the arena — the parity numbers above come from a
   drive on a PCIe **Gen3 x4** link (3.7 GB/s). Cold working‑set shifts and first‑touch
   prefills do pay drive speed. `VLLM_MOE_W2_TIER_DIRECT=1` switches misses to O_DIRECT
   (hard RAM budget, page cache stays flat; raw drive latency on every miss).
