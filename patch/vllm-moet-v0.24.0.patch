@@ -1,6 +1,6 @@
 diff --git a/csrc/nvfp4_ds_mla/concat_and_cache_nvfp4_ds_mla.cu b/csrc/nvfp4_ds_mla/concat_and_cache_nvfp4_ds_mla.cu
 new file mode 100644
-index 000000000..df62c57cc
+index 0000000..df62c57
 --- /dev/null
 +++ b/csrc/nvfp4_ds_mla/concat_and_cache_nvfp4_ds_mla.cu
 @@ -0,0 +1,142 @@
@@ -148,7 +148,7 @@ index 000000000..df62c57cc
 +}
 diff --git a/tools/nvfp4_flashinfer_sm120/README.md b/tools/nvfp4_flashinfer_sm120/README.md
 new file mode 100644
-index 000000000..a147137db
+index 0000000..a147137
 --- /dev/null
 +++ b/tools/nvfp4_flashinfer_sm120/README.md
 @@ -0,0 +1,49 @@
@@ -203,7 +203,7 @@ index 000000000..a147137db
 +- Microbench (isolated KV gather, RTX 5090): 1.86× tokens/s vs 656 B.
 diff --git a/tools/nvfp4_flashinfer_sm120/nvfp4_expand.cuh b/tools/nvfp4_flashinfer_sm120/nvfp4_expand.cuh
 new file mode 100644
-index 000000000..e27203c56
+index 0000000..e27203c
 --- /dev/null
 +++ b/tools/nvfp4_flashinfer_sm120/nvfp4_expand.cuh
 @@ -0,0 +1,211 @@
@@ -420,7 +420,7 @@ index 000000000..e27203c56
 +}
 diff --git a/tools/nvfp4_flashinfer_sm120/patch_flashinfer.py b/tools/nvfp4_flashinfer_sm120/patch_flashinfer.py
 new file mode 100644
-index 000000000..cfa92d323
+index 0000000..cfa92d3
 --- /dev/null
 +++ b/tools/nvfp4_flashinfer_sm120/patch_flashinfer.py
 @@ -0,0 +1,412 @@
@@ -837,7 +837,7 @@ index 000000000..cfa92d323
 +print("SYNTAX-OK python")
 +print("PATCH-FLASHINFER-DONE")
 diff --git a/vllm/compilation/breakable_cudagraph.py b/vllm/compilation/breakable_cudagraph.py
-index 6da3ec717..c84958ac0 100644
+index 6da3ec7..c84958a 100644
 --- a/vllm/compilation/breakable_cudagraph.py
 +++ b/vllm/compilation/breakable_cudagraph.py
 @@ -175,10 +175,13 @@ class BreakableCUDAGraphCapture:
@@ -857,7 +857,7 @@ index 6da3ec717..c84958ac0 100644
          self._capturing = True
  
 diff --git a/vllm/compilation/cuda_graph.py b/vllm/compilation/cuda_graph.py
-index b63d86199..3cad1f058 100644
+index b63d861..3cad1f0 100644
 --- a/vllm/compilation/cuda_graph.py
 +++ b/vllm/compilation/cuda_graph.py
 @@ -314,6 +314,10 @@ class CUDAGraphWrapper:
@@ -872,7 +872,7 @@ index b63d86199..3cad1f058 100644
                      # `output` is managed by pytorch's cudagraph pool
                      output = self.runnable(*args, **kwargs)
 diff --git a/vllm/config/vllm.py b/vllm/config/vllm.py
-index ba7d26c93..70a85dd31 100644
+index ba7d26c..70a85dd 100644
 --- a/vllm/config/vllm.py
 +++ b/vllm/config/vllm.py
 @@ -2161,7 +2161,15 @@ class VllmConfig:
@@ -893,7 +893,7 @@ index ba7d26c93..70a85dd31 100644
                  "nvfp4 KV cache is not supported with MLA (Multi-head Latent "
                  "Attention) backends. Please use a different --kv-cache-dtype "
 diff --git a/vllm/envs.py b/vllm/envs.py
-index 27a85bb3d..88f310c4f 100755
+index 27a85bb..88f310c 100755
 --- a/vllm/envs.py
 +++ b/vllm/envs.py
 @@ -179,6 +179,9 @@ if TYPE_CHECKING:
@@ -924,7 +924,7 @@ index 27a85bb3d..88f310c4f 100755
      # JIT all the required kernels before model execution so there is no
      # JIT'ing in the hot-path. However, this warmup increases the engine
 diff --git a/vllm/model_executor/layers/attention/mla_attention.py b/vllm/model_executor/layers/attention/mla_attention.py
-index 051468ed1..33902056c 100644
+index 051468e..3390205 100644
 --- a/vllm/model_executor/layers/attention/mla_attention.py
 +++ b/vllm/model_executor/layers/attention/mla_attention.py
 @@ -188,6 +188,7 @@ return curr_o @ W_O
@@ -981,7 +981,7 @@ index 051468ed1..33902056c 100644
  
          # Enforce that we enough for at least 1 page per request
 diff --git a/vllm/model_executor/layers/quantization/fp8.py b/vllm/model_executor/layers/quantization/fp8.py
-index 7cdb04cfb..64813139b 100644
+index 7cdb04c..6481313 100644
 --- a/vllm/model_executor/layers/quantization/fp8.py
 +++ b/vllm/model_executor/layers/quantization/fp8.py
 @@ -671,6 +671,21 @@ class Fp8MoEMethod(FusedMoEMethodBase):
@@ -1045,7 +1045,7 @@ index 7cdb04cfb..64813139b 100644
          assert self.moe_kernel is not None
          return self.moe_kernel.apply(
 diff --git a/vllm/model_executor/layers/quantization/modelopt.py b/vllm/model_executor/layers/quantization/modelopt.py
-index d51a2dd31..322e29c0a 100644
+index d51a2dd..322e29c 100644
 --- a/vllm/model_executor/layers/quantization/modelopt.py
 +++ b/vllm/model_executor/layers/quantization/modelopt.py
 @@ -1,6 +1,7 @@
@@ -1244,7 +1244,7 @@ index d51a2dd31..322e29c0a 100644
                  return UnquantizedLinearMethod()
              return None
 diff --git a/vllm/model_executor/layers/quantization/mxfp4.py b/vllm/model_executor/layers/quantization/mxfp4.py
-index 1b2a8a74b..3afdb16fd 100644
+index 1b2a8a7..3afdb16 100644
 --- a/vllm/model_executor/layers/quantization/mxfp4.py
 +++ b/vllm/model_executor/layers/quantization/mxfp4.py
 @@ -617,6 +617,21 @@ class Mxfp4MoEMethod(FusedMoEMethodBase):
@@ -1305,7 +1305,7 @@ index 1b2a8a74b..3afdb16fd 100644
          assert self.moe_kernel is not None
          return self.moe_kernel.apply(
 diff --git a/vllm/model_executor/layers/quantization/utils/fp8_utils.py b/vllm/model_executor/layers/quantization/utils/fp8_utils.py
-index 32a2d8689..3e83d5a87 100644
+index 32a2d86..3e83d5a 100644
 --- a/vllm/model_executor/layers/quantization/utils/fp8_utils.py
 +++ b/vllm/model_executor/layers/quantization/utils/fp8_utils.py
 @@ -1122,6 +1122,11 @@ def deepgemm_post_process_fp8_weight_block(
@@ -1322,10 +1322,10 @@ index 32a2d8689..3e83d5a87 100644
              mn=r,
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_cubit.py b/vllm/model_executor/layers/quantization/utils/moe_w2_cubit.py
 new file mode 100644
-index 000000000..631549c0e
+index 0000000..fe574ae
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_cubit.py
-@@ -0,0 +1,1171 @@
+@@ -0,0 +1,1243 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Routed experts on 2-bit tensor-sym planes (cubit moe_w2) for the
@@ -1416,6 +1416,55 @@ index 000000000..631549c0e
 +# layer_key -> dict(planes13, sc13, planes2, sc2, top_k, inter)
 +_LAYERS: dict[int, dict] = {}
 +_WS: dict = {}                  # shared workspaces, sized lazily
++
++# ---- adaptive expert top-p (VLLM_MOE_W2_TOPP, colibri's --topp) ----------
++# Keep each token's routed experts only up to cumulative router weight p:
++# the tail of the top-k carries little output mass but full fetch/compute
++# cost. Measured on colibri (GLM-5.2, same sigmoid+norm_topk router family):
++# p=0.7 cut expert loads 30-40% and bought 1.6x end-to-end on a cold cache.
++# Here it shrinks the per-step expert union — on the BASE cache that is
++# fewer misses and fewer replay triggers; GPU-resident it is less HBM
++# traffic. 0 (default) = off, exact stock routing.
++#   VLLM_MOE_W2_TOPP        cumulative-weight cutoff p in (0,1)
++#   VLLM_MOE_W2_TOPP_MIN    experts always kept per token (default 2)
++#   VLLM_MOE_W2_TOPP_RENORM 1 (default): renormalize kept weights so the
++#                           token's total routed weight is preserved
++#                           (colibri semantics for norm_topk models);
++#                           0: keep original weights (mass shrinks).
++_TOPP = float(os.getenv("VLLM_MOE_W2_TOPP", "0"))
++_TOPP_MIN = max(1, int(os.getenv("VLLM_MOE_W2_TOPP_MIN", "2")))
++_TOPP_RENORM = os.getenv("VLLM_MOE_W2_TOPP_RENORM", "1") == "1"
++
++
++def _apply_topp(topk_weights: torch.Tensor, topk_ids: torch.Tensor):
++    """Drop each token's routed-weight tail past cumulative fraction _TOPP.
++
++    Dropped entries get weight 0 and their expert id REDIRECTED to the
++    token's heaviest expert — the redirected pair never fetches a new
++    expert (top-1 is always kept) and its zero weight makes the unpermute
++    contribution exactly zero, so the drop needs no kernel changes and is
++    invisible to moe_align/desc. Pure static-shape tensor ops:
++    CUDA-graph-capture-safe. Returns (weights, ids) untouched when off."""
++    k = topk_ids.shape[1]
++    if not (0.0 < _TOPP < 1.0) or k <= _TOPP_MIN:
++        return topk_weights, topk_ids
++    w = topk_weights.float()
++    order = torch.argsort(w, dim=1, descending=True)
++    w_sorted = w.gather(1, order)
++    cum = torch.cumsum(w_sorted, dim=1)
++    tot = cum[:, -1:]
++    # keep ranks whose PRECEDING cumulative mass is still below p*tot
++    # (the first expert crossing the threshold is kept, colibri semantics)
++    keep_sorted = (cum - w_sorted) < (_TOPP * tot)
++    keep_sorted[:, :_TOPP_MIN] = True
++    keep = torch.zeros_like(keep_sorted).scatter(1, order, keep_sorted)
++    if _TOPP_RENORM:
++        kept_sum = (w * keep).sum(dim=1, keepdim=True).clamp_min(1e-20)
++        w = w * (tot / kept_sum)
++    top1 = topk_ids.gather(1, order[:, :1])
++    new_ids = torch.where(keep, topk_ids, top1.expand_as(topk_ids))
++    new_w = torch.where(keep, w, torch.zeros_like(w)).to(topk_weights.dtype)
++    return new_w, new_ids
 +
 +
 +def enabled() -> bool:
@@ -1618,8 +1667,11 @@ index 000000000..631549c0e
 +    tier = _fp4_tier_for_build(E, dev, N13 * K13, N2 * K2)
 +    if tier is not None and layer_key not in tier._store:
 +        return False
++    from vllm.model_executor.layers.quantization.utils import (
++        moe_w2_planes_cache as _pc)
 +    _LAYERS[layer_key] = dict(
 +        N13=N13, K13=K13, N2=N2, K2=K2, E=E, base=True,
++        tl_idx=_pc.layer_idx_from_name(getattr(layer, "layer_name", "")),
 +        off_s13=c13len, off_c2=c13len + s13len,
 +        off_s2=c13len + s13len + c2len,
 +        off4_s13=2 * c13len, off4_c2=2 * c13len + s13len,
@@ -1910,6 +1962,12 @@ index 000000000..631549c0e
 +def _finish_layer(layer, layer_key, dev, planes13, sc13, planes2, sc2,
 +                  N13, K13, N2, K2, E, param_names) -> None:
 +    from vllm.model_executor.layers.quantization.utils import moe_w2_delta
++    # transformer layer index of this layer_key (dense-offset models: GLM's
++    # first sparse layer 3 -> key 0). LOOKA uses it to pair each key with
++    # its transformer layer's router (mlp.gate) weights.
++    from vllm.model_executor.layers.quantization.utils import (
++        moe_w2_planes_cache as _pc)
++    _tl = _pc.layer_idx_from_name(getattr(layer, "layer_name", ""))
 +    if moe_w2_delta.base_enabled():
 +        # BASE cache (inverted delta): the 2-bit planes go to PINNED HOST RAM
 +        # instead of staying GPU-resident; the GPU holds only the base tier's
@@ -1926,7 +1984,7 @@ index 000000000..631549c0e
 +            torch.cat((planes13, sc13), dim=1),
 +            torch.cat((planes2, sc2), dim=1))
 +        _LAYERS[layer_key] = dict(
-+            N13=N13, K13=K13, N2=N2, K2=K2, E=E, base=True,
++            N13=N13, K13=K13, N2=N2, K2=K2, E=E, base=True, tl_idx=_tl,
 +            off_s13=c13len, off_c2=c13len + s13len,
 +            off_s2=c13len + s13len + c2len,
 +            # FP4 need-pool slot sections ([fp4_13|sc13|fp4_2|sc2]; fp4 codes
@@ -1947,7 +2005,7 @@ index 000000000..631549c0e
 +
 +    _LAYERS[layer_key] = dict(
 +        planes13=planes13, sc13=sc13, planes2=planes2, sc2=sc2,
-+        N13=N13, K13=K13, N2=N2, K2=K2, E=E,
++        N13=N13, K13=K13, N2=N2, K2=K2, E=E, tl_idx=_tl,
 +    )
 +    # Release checkpoint copies; keep CUDA stubs so device probes stay happy.
 +    stub = torch.empty(0, dtype=torch.uint8, device=dev)
@@ -2269,6 +2327,10 @@ index 000000000..631549c0e
 +
 +    st = _LAYERS[layer_key]
 +    T, H = x.shape
++    # adaptive expert top-p (env-gated; identity when off). Must run before
++    # moe_align/mark_seen/route_log so dropped experts are neither fetched
++    # nor counted as routed.
++    topk_weights, topk_ids = _apply_topp(topk_weights, topk_ids)
 +    top_k = topk_ids.shape[1]
 +    dev = x.device
 +    stream = ctypes.c_void_p(torch.cuda.current_stream(dev).cuda_stream)
@@ -2337,6 +2399,16 @@ index 000000000..631549c0e
 +            # the gate's force_promote reads the FP4 tier's own seen scatter
 +            moe_w2_delta.mark_seen(tier.seen[layer_key],
 +                                   topk_ids.view(-1).long())
++        if not prefill:
++            # LOOKA/PILOT (router-lookahead): score predictors + write the
++            # next layer's prediction. Must run BEFORE the route_log
++            # overwrite below (predictor [0] reads last step's ids from it).
++            # In-graph safe (persistent buffers, static shapes); no-op
++            # unless armed.
++            from vllm.model_executor.layers.quantization.utils import (
++                moe_w2_looka)
++            if moe_w2_looka.enabled():
++                moe_w2_looka.record(layer_key, x, topk_ids, btier.route_log)
 +        if not prefill and btier.route_log is not None:
 +            # per-(token,layer) routing log for the draft-prefetch predictor:
 +            # a static [n_layers, T_cap, k_cap] buffer the runner reads back
@@ -2499,10 +2571,10 @@ index 000000000..631549c0e
 +    return enabled() and _ensure_ready()
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py b/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py
 new file mode 100644
-index 000000000..cbaad374d
+index 0000000..7627316
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py
-@@ -0,0 +1,1288 @@
+@@ -0,0 +1,1573 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""FP4 delta tier for the 1-GPU 2-bit MoE path (quality restoration).
@@ -2602,6 +2674,61 @@ index 000000000..cbaad374d
 +# disproportionately many tokens (a one-token expert and a 500-token expert count
 +# the same under a flag). Off by default -> the prod serving path is unchanged.
 +_COUNT = (_TRACE > 0) or bool(_CAPTURE)
++
++# ---- GPU-pool warm-start (the "learning cache", colibri's .coli_usage) ----
++# The tiered store's heat.json warms the HOST arena, but the GPU slot pool
++# still converged from scratch every boot (misses + replays until the hot
++# set assembles — the "pool still converging" phase of every bring-up). The
++# base tier now persists its pool OWNERSHIP (freq-ranked (layer, expert)
++# pairs) and preloads it before cudagraph capture on the next boot: the
++# first decode step starts at yesterday's coverage instead of 0%.
++#   VLLM_MOE_W2_POOL_HEAT      1 (default) dump + preload when a dir is known
++#                              0 disables both
++#   VLLM_MOE_W2_POOL_HEAT_DIR  where the JSON lives; defaults to
++#                              VLLM_MOE_W2_STORE_DIR, then
++#                              VLLM_MOE_W2_PLANES_CACHE (first set wins)
++#   VLLM_MOE_W2_POOL_HEAT_EVERY  manager ticks between dumps (default 2000
++#                              ≈ 10 s at the 5 ms tick; atomic tmp+rename)
++#   VLLM_MOE_W2_POOL_HEAT_FILL max fraction of the pool preloaded (default
++#                              0.9 — the first steps' working set should
++#                              fetch into FREE slots, not evict preloads)
++_POOL_HEAT = os.getenv("VLLM_MOE_W2_POOL_HEAT", "1") == "1"
++_POOL_HEAT_DIR = (os.getenv("VLLM_MOE_W2_POOL_HEAT_DIR")
++                  or os.getenv("VLLM_MOE_W2_STORE_DIR")
++                  or os.getenv("VLLM_MOE_W2_PLANES_CACHE") or "")
++_POOL_HEAT_EVERY = max(int(os.getenv("VLLM_MOE_W2_POOL_HEAT_EVERY", "2000")),
++                       1)
++_POOL_HEAT_FILL = min(max(
++    float(os.getenv("VLLM_MOE_W2_POOL_HEAT_FILL", "0.9")), 0.0), 1.0)
++_POOL_HEAT_VERSION = "pool-heat-v1"
++
++# ---- lazy-promotion hysteresis (colibri's REPIN anti-ping-pong) ----------
++# When the pool is FULL, a lazy background promotion evicts the least-
++# valuable slot — with a full pool and a drifting working set this can
++# ping-pong (promote X evicting Y, next tick promote Y evicting X), and
++# every swap perturbs which experts serve at which tier mid-decode. With
++# VLLM_MOE_W2_PROMO_HYST=h (>1), a candidate only displaces into a full
++# pool when its recency-decayed freq exceeds h * (weakest eligible
++# victim's) + 4 (colibri's 25%+4 rule at h=1.25). 0/1 (default) = off.
++# Mandatory paths (miss restore, gate force_promote, prefill
++# ensure_resident) are NEVER gated — correctness beats churn.
++_PROMO_HYST = float(os.getenv("VLLM_MOE_W2_PROMO_HYST", "0"))
++
++# ---- speculation guard (colibri's cold-cache DRAFT auto-off) -------------
++# Speculative decode inflates the per-step expert union (verify batches
++# route 1+k tokens), so on a COLD pool it multiplies miss-replays — colibri
++# measured MTP as a net time LOSS until the cache warmed, and auto-disabled
++# drafts. Here: when the windowed replay rate (the KPI) exceeds the
++# threshold, the runner stops SCHEDULING drafts (the guard suppresses
++# take_draft_token_ids); speculation resumes once the pool warms below
++# thresh/2 (hysteresis). Value = replay %%. Default ON at 60 (measured on
++# GLM-5.2 TP2: latches within seconds of a cold boot, releases at 30% once
++# the pool converges — decode then jumped 41->53 tok/s from MTP — and
++# re-latches around working-set shifts). Inert without the base cache;
++# speculation itself is lossless, so the guard never changes outputs.
++# 0 = off (schedule drafts unconditionally, pre-guard behaviour).
++_SPEC_GUARD = float(os.getenv("VLLM_MOE_W2_SPEC_GUARD", "60"))
++_SPEC_GUARD_EMA = float(os.getenv("VLLM_MOE_W2_SPEC_GUARD_EMA", "0.02"))
 +
 +# Per-expert FP4 plane sizes for the SINGLE-GPU (TP1) layout. Under tensor
 +# parallelism the experts shard, so the real per-rank planes are smaller; the
@@ -2741,6 +2868,22 @@ index 000000000..cbaad374d
 +        self._aff_k = 8
 +        self._last_ids: torch.Tensor | None = None
 +        self._kpi_prefetched = 0
++        # spec-guard state: EMA of the per-step replay indicator (fed by
++        # kpi_step) + the current suppression latch (read by the runner).
++        self._replay_ema = 0.0
++        self._spec_suppressed = False
++        # pool warm-start bookkeeping (dump cadence + one-shot preload flag).
++        # The previous run's heat file is read AT TIER CREATION and stashed:
++        # the manager thread ticks all through weight load and its periodic
++        # dump would otherwise overwrite the file with the (still empty)
++        # boot pool long before the worker-driven preload reads it —
++        # measured: a 8.9k-owner file clobbered to 0 within seconds of boot.
++        # Dumps stay blocked until the stash is consumed (or absent).
++        self._heat_last_dump = 0
++        self._heat_preloaded = False
++        self._heat_pending: list | None = None
++        if _POOL_HEAT and _POOL_HEAT_DIR and tag == "base":
++            self._heat_pending = self._read_heat_file()
 +        # recency-decayed routing frequency per expert (drives the freq policy)
 +        self._freq = torch.zeros(n_layers, n_experts, dtype=torch.float32)
 +        # NEED signal (gate-driven policy): how often the confidence gate flagged a
@@ -2913,6 +3056,17 @@ index 000000000..cbaad374d
 +                    order = torch.argsort(self._freq[ca[:, 0], ca[:, 1]],
 +                                          descending=True)
 +                    cand = [cand[i] for i in order.tolist()]
++                # Lazy-promotion hysteresis (opt-in): into a FULL pool, only
++                # candidates clearly hotter than the weakest eligible victim
++                # may displace (anti ping-pong; colibri's 25%+4 REPIN rule).
++                # One vectorized floor per tick; free-slot promotions and all
++                # mandatory paths are unaffected.
++                if _PROMO_HYST > 1.0 and not self._free and cand:
++                    floor = self._promo_floor()
++                    if floor is not None:
++                        bar = floor * _PROMO_HYST + 4.0
++                        cand = [(li, ei) for li, ei in cand
++                                if float(self._freq[li, ei]) > bar]
 +                promoted = 0
 +                for li, ei in cand:
 +                    if promoted >= _PROMOTE_PER_TICK:
@@ -2930,11 +3084,150 @@ index 000000000..cbaad374d
 +        # of ones — a lost flag only delays promotion by one tick)
 +        if self._tick % 4 == 0:
 +            self.seen.zero_()
++        # PILOT (router-lookahead) consumption: prefetch the experts the
++        # in-graph predictor flagged for upcoming layers. 5 ms ticks against
++        # a 30-60 ms step: fetched bytes typically land before the step's
++        # replay (or the next step) needs them.
++        from vllm.model_executor.layers.quantization.utils import moe_w2_looka
++        if moe_w2_looka.pilot_enabled() and self._tag == "base":
++            try:
++                moe_w2_looka.tick_consume(self)
++            except Exception as e:  # noqa: BLE001 - prefetch is best-effort
++                logger.warning_once("moe_w2 PILOT tick failed: %s", e)
++        # pool warm-start: periodic freq-ranked ownership dump (atomic)
++        if (_POOL_HEAT and self._tag == "base" and _POOL_HEAT_DIR
++                and self._tick - self._heat_last_dump >= _POOL_HEAT_EVERY):
++            self._heat_last_dump = self._tick
++            self._dump_pool_heat()
 +        if _TRACE and self._tick - self._last_summary_tick >= _TRACE_EVERY:
 +            self._log_summary()
 +            self._last_summary_tick = self._tick
 +
-+    def _take_slots_batch(self, k: int, emergency: bool = False) -> list[int]:
++    def _promo_floor(self) -> float | None:
++        """freq of the weakest EVICTABLE slot (hysteresis reference): owners
++        not in the current seen window, >=2 ticks cold, not step-pinned.
++        Lock held by caller. None when nothing is evictable (promotions
++        will fail to take a slot anyway)."""
++        li = torch.tensor([o[0] for o in self._owner], dtype=torch.long)
++        ei = torch.tensor([o[1] for o in self._owner], dtype=torch.long)
++        tk = torch.tensor([o[2] for o in self._owner], dtype=torch.float64)
++        lic, eic = li.clamp(min=0), ei.clamp(min=0)
++        blocked = ((li < 0) | self._seen_host[lic, eic].to(torch.bool)
++                   | ((self._tick - tk) < 2))
++        if self._step_pins:
++            blocked[list(self._step_pins)] = True
++        if bool(blocked.all()):
++            return None
++        key = self._freq[lic, eic].double()
++        key[blocked] = float("inf")
++        return float(key.min())
++
++    # ---- GPU-pool warm-start (persist + preload the hot ownership) --------
++
++    def _heat_path(self) -> str:
++        from vllm.model_executor.layers.quantization.utils.moe_w2_store \
++            import _rank_suffix
++        return os.path.join(
++            _POOL_HEAT_DIR, f"pool-heat.{self._tag}.{_rank_suffix()}.json")
++
++    def _heat_meta(self) -> dict:
++        return dict(version=_POOL_HEAT_VERSION, tag=self._tag,
++                    n_layers=self.n_layers, E=self.E,
++                    slot_bytes=self.slot_bytes)
++
++    def _read_heat_file(self) -> list | None:
++        """Parse + validate the heat file into an owner list (None on any
++        miss). Called at tier creation, before the manager can clobber it."""
++        import json
++        try:
++            path = self._heat_path()
++            if not os.path.exists(path):
++                return None
++            with open(path) as f:
++                snap = json.load(f)
++            if snap.get("meta") != self._heat_meta():
++                logger.warning(
++                    "moe_w2 pool-heat: %s is for another model/config "
++                    "(%s vs %s) — ignored", path, snap.get("meta"),
++                    self._heat_meta())
++                return None
++            pairs = [(int(li), int(ei)) for li, ei in snap.get("owners", [])
++                     if 0 <= int(li) < self.n_layers and 0 <= int(ei) < self.E]
++            logger.info("moe_w2 [%s] pool-heat: %d hot experts stashed from "
++                        "%s (preload runs after KV-cache init)",
++                        self._tag, len(pairs), path)
++            return pairs
++        except Exception as e:  # noqa: BLE001 - warm-start is best-effort
++            logger.warning("moe_w2 pool-heat read failed: %s", e)
++            return None
++
++    def _dump_pool_heat(self) -> None:
++        """Write the pool's current owners, hottest first (freq is the
++        recency-decayed routing frequency), atomically. ~100 KB of JSON for
++        a 10k-slot pool; a missed dump only costs preload freshness.
++
++        Blocked while a stashed preload is UNCONSUMED (the manager ticks all
++        through weight load — dumping there would persist an empty boot pool
++        over the previous run's real heat), and skipped for empty pools."""
++        import json
++        if self._heat_pending is not None and not self._heat_preloaded:
++            return
++        try:
++            with self._lock:
++                owners = [(li, ei, float(self._freq[li, ei]))
++                          for li, ei, _t in self._owner if li >= 0]
++            if not owners:
++                return
++            owners.sort(key=lambda r: -r[2])
++            snap = dict(meta=self._heat_meta(),
++                        owners=[[li, ei] for li, ei, _f in owners])
++            os.makedirs(_POOL_HEAT_DIR, exist_ok=True)
++            path = self._heat_path()
++            tmp = path + ".tmp"
++            with open(tmp, "w") as f:
++                json.dump(snap, f)
++            os.replace(tmp, path)
++        except Exception as e:  # noqa: BLE001 - observability path
++            logger.warning_once("moe_w2 pool-heat dump failed: %s", e)
++
++    def preload_pool(self) -> int:
++        """One-shot boot preload of the pool from the last run's heat dump
++        (the colibri 'learning cache': the engine starts with YOUR hot
++        experts already resident instead of converging from 0% every boot).
++        Driven by the worker AFTER weight load + KV allocation and BEFORE
++        cudagraph capture (slot_table writes must precede graph bake-in).
++        Consumes the owner list stashed at tier creation (_heat_pending —
++        the file itself may have been re-dumped since). Fills at most
++        _POOL_HEAT_FILL of the pool, hottest first, leaving free slots for
++        the first steps' fresh working set. Never raises."""
++        import time as _time
++        pairs = self._heat_pending
++        if self._heat_preloaded or not pairs or self.n_slots == 0:
++            self._heat_preloaded = True    # unblock the periodic dumps
++            return 0
++        self._heat_preloaded = True
++        try:
++            budget = int(self.n_slots * _POOL_HEAT_FILL)
++            pairs = pairs[:budget]
++            t0 = _time.perf_counter()
++            total = 0
++            # chunked: rows_for stages through a pinned buffer sized to the
++            # batch — 256-row chunks keep it ~1-3 GiB at GLM/Kimi slot sizes
++            for i in range(0, len(pairs), 256):
++                total += self.prefetch_pairs(pairs[i:i + 256])
++            logger.info(
++                "moe_w2 [%s] pool warm-start: %d/%d experts preloaded "
++                "in %.1f s (%.1f%% of the pool starts WARM)",
++                self._tag, total, len(pairs),
++                _time.perf_counter() - t0,
++                100.0 * total / max(self.n_slots, 1))
++            return total
++        except Exception as e:  # noqa: BLE001 - warm-start is best-effort
++            logger.warning("moe_w2 pool-heat preload failed: %s", e)
++            return 0
++
++    def _take_slots_batch(self, k: int, emergency: bool = False,
++                          min_cold: int = 2) -> list[int]:
 +        """Take up to k slots (lock held by caller): free list first, then ONE
 +        vectorized eviction pass over all slots. Replaces the old per-slot
 +        python scan per promotion — O(n_slots) per TAKEN slot — which at GLM
@@ -2975,15 +3268,16 @@ index 000000000..cbaad374d
 +        blocked = (li < 0) | self._seen_host[lic, eic].to(torch.bool)
 +        if self._step_pins:
 +            blocked[list(self._step_pins)] = True
-+        # Pass 1: only >=2-tick-cold victims (never disturbs slots a
++        # Pass 1: only >=min_cold-tick-cold victims (never disturbs slots a
 +        # CONCURRENT in-flight graph might still read — the background
-+        # manager's constraint). Pass 2 (emergency): the synchronous callers
-+        # (force_promote / ensure_resident, runner thread, no forward in
-+        # flight) relax the coldness bound rather than leave a missing
-+        # expert UNRESTORED — a replay that keeps zeroed contributions is a
-+        # silent quality hit and a nondeterminism source, strictly worse
-+        # than evicting a warm-but-idle slot.
-+        passes = [blocked | ((self._tick - tk) < 2)]
++        # manager's constraint; speculative prefetchers pass a much higher
++        # bound so they can never churn the hot set). Pass 2 (emergency):
++        # the synchronous callers (force_promote / ensure_resident, runner
++        # thread, no forward in flight) relax the coldness bound rather
++        # than leave a missing expert UNRESTORED — a replay that keeps
++        # zeroed contributions is a silent quality hit and a nondeterminism
++        # source, strictly worse than evicting a warm-but-idle slot.
++        passes = [blocked | ((self._tick - tk) < min_cold)]
 +        if emergency:
 +            passes.append(blocked)
 +        taken: set[int] = set()
@@ -3068,6 +3362,10 @@ index 000000000..cbaad374d
 +        wrong predictions cost one cold slot each and decay away."""
 +        if self.route_log is None:
 +            return 0
++        # route_log may be armed for LOOKA/PILOT only — the affinity
++        # predictor still needs its own opt-in.
++        if os.getenv("VLLM_MOE_W2_PREFETCH", "0") != "1":
++            return 0
 +        t_cap = self.route_log.shape[1]
 +        ids = cur_ids[:t_cap].detach().to("cpu", non_blocking=False).long()
 +        # 1) fold previous step's log for the ids that produced it
@@ -3094,22 +3392,39 @@ index 000000000..cbaad374d
 +        pred = self._aff[vids]                     # [T, L, k]
 +        cap = int(os.getenv("VLLM_MOE_W2_PREFETCH_CAP", "32"))
 +        pairs = []
++        for li in range(self.n_layers):
++            es = pred[:, li, :].flatten()
++            es = es[es >= 0]
++            if es.numel() == 0:
++                continue
++            for e in torch.unique(es).tolist():
++                if int(self._mirror[li, e]) < 0 and li in self._store:
++                    pairs.append((li, int(e)))
++                    if len(pairs) >= cap:
++                        break
++            if len(pairs) >= cap:
++                break
++        return self.prefetch_pairs(pairs)
++
++    def prefetch_pairs(self, pairs: list, cold_ticks: int = 0) -> int:
++        """Best-effort fetch of COLD (layer, expert) pairs into the pool
++        (non-emergency slots, step-pinned, side-stream H2D, single sync
++        before mapping). The shared tail of the affinity prefetcher and the
++        PILOT router-lookahead consumer; also the pool warm-start's fetch
++        primitive. Caller must NOT hold the lock.
++
++        `cold_ticks` > 0 restricts eviction victims to slots idle at least
++        that many ticks (speculative callers must not churn the hot set);
++        free slots are always eligible."""
++        if not pairs:
++            return 0
 +        with self._lock:
-+            for li in range(self.n_layers):
-+                es = pred[:, li, :].flatten()
-+                es = es[es >= 0]
-+                if es.numel() == 0:
-+                    continue
-+                for e in torch.unique(es).tolist():
-+                    if int(self._mirror[li, e]) < 0 and li in self._store:
-+                        pairs.append((li, int(e)))
-+                        if len(pairs) >= cap:
-+                            break
-+                if len(pairs) >= cap:
-+                    break
++            pairs = [(li, ei) for li, ei in pairs
++                     if int(self._mirror[li, ei]) < 0 and li in self._store]
 +            if not pairs:
 +                return 0
-+            slots = self._take_slots_batch(len(pairs))   # non-emergency
++            slots = self._take_slots_batch(len(pairs),
++                                           min_cold=max(cold_ticks, 2))
 +            plan = [(p, s) for p, s in zip(pairs, slots)]
 +            if not plan:
 +                return 0
@@ -3388,6 +3703,31 @@ index 000000000..cbaad374d
 +        self._kpi_replays += int(replayed)
 +        self._kpi_c_steps += 1
 +        self._kpi_c_replays += int(replayed)
++        # Replay-rate EMA: maintained unconditionally — it is the shared
++        # "pool warmth" signal (spec-guard latch below, PILOT's cold-phase
++        # gate in moe_w2_looka.tick_consume).
++        self._replay_ema += _SPEC_GUARD_EMA * (
++            float(replayed) - self._replay_ema)
++        # spec-guard: hysteresis latch on the EMA. The runner reads
++        # _spec_suppressed in take_draft_token_ids — while latched, drafts
++        # are not scheduled, verify batches shrink to 1 token, and the cold
++        # pool warms at the pure-decode rate instead of replaying
++        # k+1-token unions (colibri's DRAFT auto-off, reversible).
++        if _SPEC_GUARD > 0:
++            pct = 100.0 * self._replay_ema
++            if not self._spec_suppressed and pct > _SPEC_GUARD:
++                self._spec_suppressed = True
++                logger.info(
++                    "moe_w2 [%s] SPEC-GUARD: replay EMA %.0f%% > %.0f%% — "
++                    "draft scheduling suppressed until the pool warms "
++                    "(resumes < %.0f%%)", self._tag, pct, _SPEC_GUARD,
++                    _SPEC_GUARD / 2)
++            elif self._spec_suppressed and pct < _SPEC_GUARD / 2:
++                self._spec_suppressed = False
++                logger.info(
++                    "moe_w2 [%s] SPEC-GUARD: replay EMA %.0f%% < %.0f%% — "
++                    "draft scheduling resumed", self._tag, pct,
++                    _SPEC_GUARD / 2)
 +        if _KPI_EVERY <= 0 or self._kpi_steps < _KPI_EVERY:
 +            return
 +        cov_total = max(len(self._store), 1) * self.E
@@ -3402,6 +3742,11 @@ index 000000000..cbaad374d
 +                f"(avg {self._kpi_fp_resid / self._kpi_fp_giveup:.0f} pairs)")
 +        if self._kpi_prefetched:
 +            unfixed += (f"; draft-prefetched: {self._kpi_prefetched}")
++        if _SPEC_GUARD > 0:
++            unfixed += (f"; replay EMA {100.0 * self._replay_ema:.0f}%"
++                        f"{' (SPEC SUPPRESSED)' if self._spec_suppressed else ''}")
++        from vllm.model_executor.layers.quantization.utils import moe_w2_looka
++        unfixed += moe_w2_looka.kpi_summary()
 +        logger.info(
 +            "[%s] KPI: replay %.1f%% of last %d steps (avg %.1f missing "
 +            "pairs/step; cumulative %.1f%% of %d) — pool %d slots = %.1f%% "
@@ -3711,6 +4056,14 @@ index 000000000..cbaad374d
 +    return _BASE_GB > 0
 +
 +
++def spec_suppressed() -> bool:
++    """Spec-guard latch (VLLM_MOE_W2_SPEC_GUARD): True while the base pool
++    is too cold for speculation to pay — the runner then skips scheduling
++    drafts. Always False when the guard or the base cache is off."""
++    t = _BASE_TIER
++    return t is not None and t._spec_suppressed
++
++
 +def get_base_tier(n_layers: int, n_experts: int, dev,
 +                  w13_bytes: int, w2_bytes: int) -> DeltaTier:
 +    """Base-cache tier singleton. `w13_bytes`/`w2_bytes` are the PACKED 2-bit
@@ -3728,15 +4081,19 @@ index 000000000..cbaad374d
 +        # after logits to decide the fetch+replay.
 +        _BASE_TIER.miss_count = torch.zeros(1, dtype=torch.int32,
 +                                            device=_BASE_TIER.dev)
-+        if os.getenv("VLLM_MOE_W2_PREFETCH", "0") == "1":
-+            # in-graph routing log for the draft-affinity prefetcher:
-+            # [n_layers, T_cap, K_cap] — T_cap covers small decode batches
-+            # (seqs x MTP verify tokens); bigger steps log a prefix only.
++        from vllm.model_executor.layers.quantization.utils import moe_w2_looka
++        if (os.getenv("VLLM_MOE_W2_PREFETCH", "0") == "1"
++                or moe_w2_looka.wants_route_log()):
++            # in-graph routing log: the draft-affinity prefetcher folds it
++            # into the token->experts table, and LOOKA's predictor-[0]
++            # baseline scores it (previous step's routing per layer).
 +            _BASE_TIER.route_log = torch.zeros(
 +                n_layers, int(os.getenv("VLLM_MOE_W2_PREFETCH_TCAP", "8")),
 +                16, dtype=torch.int32, device=_BASE_TIER.dev)
-+            logger.info("moe_w2 BASE cache: draft-affinity PREFETCH armed "
-+                        "(route_log %s)", tuple(_BASE_TIER.route_log.shape))
++            logger.info("moe_w2 BASE cache: route_log armed %s (prefetch=%s"
++                        ", looka/pilot=%s)", tuple(_BASE_TIER.route_log.shape),
++                        os.getenv("VLLM_MOE_W2_PREFETCH", "0"),
++                        moe_w2_looka.wants_route_log())
 +        n_step = n_layers * 16      # decode working set (top-k<=16) headroom
 +        assert _BASE_TIER.n_slots >= max(2 * 256, n_step), (
 +            f"moe_w2 base cache: pool of {_BASE_TIER.n_slots} slots is smaller "
@@ -3793,7 +4150,7 @@ index 000000000..cbaad374d
 +    return _TIER
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_gate.py b/vllm/model_executor/layers/quantization/utils/moe_w2_gate.py
 new file mode 100644
-index 000000000..8891cf5fd
+index 0000000..8891cf5
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_gate.py
 @@ -0,0 +1,182 @@
@@ -3979,9 +4336,271 @@ index 000000000..8891cf5fd
 +    return dict(steps=_n_steps, fired=_n_fired, reforwarded=_n_reforwarded,
 +                promoted=_n_promoted, signal=_SIGNAL, tau=_TAU,
 +                fire_rate=(_n_fired / _n_steps if _n_steps else 0.0))
+diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_looka.py b/vllm/model_executor/layers/quantization/utils/moe_w2_looka.py
+new file mode 100644
+index 0000000..f5de680
+--- /dev/null
++++ b/vllm/model_executor/layers/quantization/utils/moe_w2_looka.py
+@@ -0,0 +1,256 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++"""Router-lookahead measurement (LOOKA) + prefetch (PILOT) for the moe_w2
++BASE cache.
++
++Motivation (measured on colibri, the CPU streaming engine for GLM-5.2):
++next-layer expert routing is predictable AHEAD of the layer itself —
++applying layer L+1's router to layer L's hidden state recalled 71.6% of the
++true top-8, vs 41.3% for "same experts as the previous token". The shipped
++draft-affinity prefetcher (VLLM_MOE_W2_PREFETCH) is the 41.3%-class
++predictor (token-identity affinity); this module measures — and optionally
++acts on — the stronger router-lookahead signal in THIS stack:
++
++  LOOKA (VLLM_MOE_W2_LOOKA=1): counters only, zero behaviour change.
++    At each MoE layer's decode forward, (a) score the previous decode
++    step's routing for the same layer (predictor [0], the affinity-class
++    baseline) and (b) score the prediction made one layer EARLIER by
++    applying THIS layer's router to the PREVIOUS layer's expert input
++    (predictor [1], router-lookahead). Recalls are accumulated in-graph
++    (GPU counters, no syncs) and reported on the KPI line.
++
++  PILOT (VLLM_MOE_W2_PILOT=1, implies the LOOKA machinery): at layer L the
++    predicted top-K for layer L+1 is also written to an in-graph pilot log;
++    the tier's manager thread consumes it every tick (5 ms against a
++    30-60 ms step) and prefetches the predicted NON-RESIDENT experts on the
++    side stream — so by the time the step's misses are counted, part of the
++    would-be fetch burst is already on the GPU, and the mandatory replay
++    (or the next step) finds them resident. Mispredictions cost one cold
++    slot each and decay away; the prefetch never emergency-evicts.
++
++The predictor input is layer L's MoE input x_L (the post-attention-LN
++hidden) fed to layer L+1's router — one residual short of the true router
++input (x_L lacks L's expert contribution). That is exactly the point where
++the prediction is available a full layer ahead of the fetch it hides; the
++LOOKA counters price that approximation honestly before PILOT is trusted.
++
++Everything is CUDA-graph-safe by construction: the in-graph half touches
++only persistent buffers via tensor ops (matmul + sigmoid + topk + compares),
++python branching happens at capture time, and the host half (arming, KPI
++reads, PILOT consumption) runs on the manager/runner threads outside
++capture.
++"""
++
++import os
++import re
++
++import torch
++
++from vllm.logger import init_logger
++
++logger = init_logger(__name__)
++
++_LOOKA = os.getenv("VLLM_MOE_W2_LOOKA", "0") == "1"
++_PILOT = os.getenv("VLLM_MOE_W2_PILOT", "0") == "1"
++# top-K predictions kept per position: the head of the router ranking is
++# more reliable than the tail (colibri's PILOT_K) — and it bounds both the
++# in-graph topk and the per-tick prefetch fan-out.
++_PILOT_K = max(1, min(16, int(os.getenv("VLLM_MOE_W2_PILOT_K", "8"))))
++# max experts fetched per manager tick from the pilot log
++_PILOT_CAP = int(os.getenv("VLLM_MOE_W2_PILOT_CAP", "32"))
++# pilot fetches may only displace slots idle for this many manager ticks
++# (5 ms each; 200 ≈ 1 s). The per-step hot set is touched every few ticks
++# and must never be churned by speculative prefetch.
++_PILOT_COLD_TICKS = int(os.getenv("VLLM_MOE_W2_PILOT_COLD_TICKS", "200"))
++# pilot consumes only while the pool is COLD (replay EMA %, from kpi_step):
++# warm pools are covered by the step's own miss restore and pilot fetches
++# would only churn idle slots. 0 = always consume.
++_PILOT_MIN_REPLAY = float(os.getenv("VLLM_MOE_W2_PILOT_MIN_REPLAY", "30"))
++_TCAP = int(os.getenv("VLLM_MOE_W2_PREFETCH_TCAP", "8"))
++
++_armed = False
++_gate_w: dict[int, torch.Tensor] = {}     # layer_key -> [E, H] (live param)
++_gate_b: dict[int, torch.Tensor] = {}     # layer_key -> [E] f32 or None
++_pred_buf: torch.Tensor | None = None     # [TCAP, PILOT_K] i32 (key k-1 -> k)
++_pilot_log: torch.Tensor | None = None    # [n_keys, TCAP, PILOT_K] i32
++_pilot_host: torch.Tensor | None = None   # pinned mirror for the tick D2H
++# GPU counters, written in-graph: [0]=prev-step hits, [1]=lookahead hits
++_hit: torch.Tensor | None = None          # i64 [2]
++_tot: torch.Tensor | None = None          # i64 [2]
++
++
++def enabled() -> bool:
++    return _armed and (_LOOKA or _PILOT)
++
++
++def pilot_enabled() -> bool:
++    return _armed and _PILOT
++
++
++def wants_route_log() -> bool:
++    """The predictor-[0] baseline reads the previous step's routing from the
++    tier's route_log — arm it even when the affinity prefetcher is off."""
++    return _LOOKA or _PILOT
++
++
++def arm(model, n_keys: int, dev) -> None:
++    """Collect the live router (mlp.gate) weights per moe_w2 layer_key and
++    allocate the persistent in-graph buffers. Called once from the runner
++    after weight load (before any cudagraph capture). Never raises."""
++    global _armed, _pred_buf, _pilot_log, _hit, _tot
++    if not (_LOOKA or _PILOT) or _armed:
++        return
++    try:
++        from vllm.model_executor.layers.quantization.utils import moe_w2_cubit
++        # transformer layer idx -> moe_w2 layer_key (dense layers have none)
++        tl_to_key = {
++            st.get("tl_idx"): key
++            for key, st in moe_w2_cubit._LAYERS.items()
++            if st.get("tl_idx") is not None
++        }
++        pat = re.compile(r"\.layers\.(\d+)\.mlp\.gate\.(weight|"
++                         r"e_score_correction_bias)$")
++        for name, p in model.named_parameters():
++            m = pat.search(name)
++            if m is None:
++                continue
++            key = tl_to_key.get(int(m.group(1)))
++            if key is None:
++                continue
++            if m.group(2) == "weight":
++                _gate_w[key] = p.data          # live reference, no copy
++            else:
++                _gate_b[key] = p.data.float()
++        if not _gate_w:
++            logger.warning("moe_w2 LOOKA: no mlp.gate weights found — "
++                           "disabled (router naming mismatch?)")
++            return
++        _pred_buf = torch.zeros(_TCAP, _PILOT_K, dtype=torch.int32,
++                                device=dev)
++        if _PILOT:
++            _pilot_log = torch.full((n_keys, _TCAP, _PILOT_K), -1,
++                                    dtype=torch.int32, device=dev)
++        _hit = torch.zeros(2, dtype=torch.int64, device=dev)
++        _tot = torch.zeros(2, dtype=torch.int64, device=dev)
++        _armed = True
++        logger.info(
++            "moe_w2 %s armed: %d routers, pred top-%d, T_cap %d%s",
++            "PILOT (router-lookahead prefetch)" if _PILOT else
++            "LOOKA (router-lookahead counters)",
++            len(_gate_w), _PILOT_K, _TCAP,
++            f", pilot cap {_PILOT_CAP}/tick" if _PILOT else "")
++    except Exception as e:  # noqa: BLE001 - measurement must never kill boot
++        logger.warning("moe_w2 LOOKA arm failed: %s", e)
++
++
++def record(layer_key: int, x: torch.Tensor, topk_ids: torch.Tensor,
++           route_log: torch.Tensor | None) -> None:
++    """In-graph hook, called from the moe_w2 decode forward of every BASE
++    layer BEFORE the route_log is overwritten. Pure tensor ops on persistent
++    buffers (capture-safe); `layer_key` is a python int, so the branches
++    below specialize per layer at capture time."""
++    if not _armed:
++        return
++    T = x.shape[0]
++    if T > _TCAP:
++        return
++    k_true = topk_ids.shape[1]
++    true = topk_ids[:, :k_true].int()
++    # [0] previous decode step, same layer (the affinity-class baseline).
++    # route_log still holds LAST step's ids for this layer here.
++    if route_log is not None:
++        prev = route_log[layer_key, :T, :k_true]
++        m0 = (true.unsqueeze(2) == prev.unsqueeze(1)).any(dim=2)
++        _hit[0] += m0.sum()
++        _tot[0] += true.numel()
++    # [1] router-lookahead: the prediction targeting THIS layer, written
++    # into _pred_buf by the previous layer's record() call (same step; the
++    # keys run in order inside one forward). Exists iff this layer's gate
++    # was collected and there IS a previous base layer.
++    if layer_key > 0 and layer_key in _gate_w:
++        pred = _pred_buf[:T]
++        m1 = (true.unsqueeze(2) == pred.unsqueeze(1)).any(dim=2)
++        _hit[1] += m1.sum()
++        _tot[1] += true.numel()
++    # predict layer_key+1's routing from THIS layer's expert input
++    w = _gate_w.get(layer_key + 1)
++    if w is not None:
++        logits = (x.to(w.dtype) @ w.t()).float()
++        scores = torch.sigmoid(logits)
++        b = _gate_b.get(layer_key + 1)
++        if b is not None:
++            scores = scores + b
++        pred_ids = torch.topk(scores, _PILOT_K, dim=-1).indices.int()
++        _pred_buf[:T].copy_(pred_ids)
++        if _pilot_log is not None:
++            _pilot_log[layer_key + 1, :T].copy_(pred_ids)
++
++
++def tick_consume(tier) -> int:
++    """PILOT host half, called from the tier's manager tick (outside
++    capture): read the pilot log, prefetch predicted non-resident experts.
++    The log is tiny (n_keys * TCAP * K * 4 B).
++
++    Hard-won rules from the live bring-up (each violation halved decode):
++      - CONSUME-ONCE: the log is invalidated after the read — otherwise
++        every 5 ms tick re-fetches the same stale predictions forever
++        (29k fetches/500 steps measured). The fill_ races benignly with
++        the in-flight step's writes (a lost prediction = one tick delay).
++      - SIDE-STREAM D2H: `.to('cpu')` on the manager thread runs on the
++        DEFAULT stream — synchronizing it every tick stalls the in-flight
++        decode graphs (measured: flat ~20 tok/s regardless of pool warmth).
++        Copy through the tier's side stream into a pinned buffer instead.
++      - COLD PHASE ONLY: on a WARM pool the step's own miss restore covers
++        the working set and pilot fetches only churn idle slots for ~zero
++        upside; consume only while the replay EMA says the pool is cold.
++      - NEVER CHURN THE HOT SET: predictions may only displace slots idle
++        >= _PILOT_COLD_TICKS. colibri's PILOT was an OS readahead HINT
++        with zero eviction cost; ours takes a slot, so it must only take
++        genuinely idle ones."""
++    global _pilot_host
++    if _pilot_log is None:
++        return 0
++    if 100.0 * tier._replay_ema < _PILOT_MIN_REPLAY:
++        return 0
++    if _pilot_host is None:
++        _pilot_host = torch.empty_like(_pilot_log, device="cpu",
++                                       pin_memory=True)
++    with torch.cuda.stream(tier._stream):
++        _pilot_host.copy_(_pilot_log, non_blocking=True)
++        ev = torch.cuda.Event()
++        ev.record(tier._stream)
++        _pilot_log.fill_(-1)
++    ev.synchronize()
++    flat = _pilot_host.flatten()
++    valid = (flat >= 0) & (flat < tier.E)
++    if not bool(valid.any()):
++        return 0
++    n_keys = _pilot_host.shape[0]
++    per_layer = _pilot_host.shape[1] * _pilot_host.shape[2]
++    li_all = (torch.arange(n_keys, dtype=torch.int64)
++              .repeat_interleave(per_layer))
++    keys = torch.unique(li_all[valid] * tier.E + flat[valid].long())
++    pairs: list[tuple[int, int]] = []
++    for k in keys.tolist():
++        li, e = divmod(k, tier.E)
++        if int(tier._mirror[li, e]) < 0 and li in tier._store:
++            pairs.append((li, e))
++            if len(pairs) >= _PILOT_CAP:
++                break
++    if not pairs:
++        return 0
++    return tier.prefetch_pairs(pairs, cold_ticks=_PILOT_COLD_TICKS)
++
++
++def kpi_summary() -> str:
++    """Recall summary for the KPI line (host thread; one small D2H)."""
++    if not _armed or _tot is None:
++        return ""
++    tot = _tot.tolist()
++    hit = _hit.tolist()
++    if tot[0] == 0 and tot[1] == 0:
++        return ""
++    r0 = 100.0 * hit[0] / max(tot[0], 1)
++    r1 = 100.0 * hit[1] / max(tot[1], 1)
++    return (f"; LOOKA recall: prev-step {r0:.1f}% / lookahead {r1:.1f}% "
++            f"(top-{_PILOT_K}, n={tot[1]})")
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_planes.py b/vllm/model_executor/layers/quantization/utils/moe_w2_planes.py
 new file mode 100644
-index 000000000..da9d22e2d
+index 0000000..da9d22e
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_planes.py
 @@ -0,0 +1,253 @@
@@ -4240,7 +4859,7 @@ index 000000000..da9d22e2d
 +    return vals * s
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_planes_cache.py b/vllm/model_executor/layers/quantization/utils/moe_w2_planes_cache.py
 new file mode 100644
-index 000000000..4834c6010
+index 0000000..4834c60
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_planes_cache.py
 @@ -0,0 +1,199 @@
@@ -4445,7 +5064,7 @@ index 000000000..4834c6010
 +        _mark_broken(f"store failed: {e}")
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_store.py b/vllm/model_executor/layers/quantization/utils/moe_w2_store.py
 new file mode 100644
-index 000000000..41a5a0535
+index 0000000..41a5a05
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_store.py
 @@ -0,0 +1,629 @@
@@ -5080,7 +5699,7 @@ index 000000000..41a5a0535
 +    return store
 diff --git a/vllm/model_executor/layers/quantization/utils/prefill_timers.py b/vllm/model_executor/layers/quantization/utils/prefill_timers.py
 new file mode 100644
-index 000000000..fd83f500b
+index 0000000..fd83f50
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/prefill_timers.py
 @@ -0,0 +1,53 @@
@@ -5139,7 +5758,7 @@ index 000000000..fd83f500b
 +                name, _total_ms[name], _count[name])
 diff --git a/vllm/model_executor/layers/quantization/utils/skinny_fp8_cubit.py b/vllm/model_executor/layers/quantization/utils/skinny_fp8_cubit.py
 new file mode 100644
-index 000000000..adf4754de
+index 0000000..adf4754
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/skinny_fp8_cubit.py
 @@ -0,0 +1,238 @@
@@ -5382,7 +6001,7 @@ index 000000000..adf4754de
 +    torch.zeros(1, device="cuda")
 +    return _ensure_ready()
 diff --git a/vllm/model_executor/layers/sparse_attn_indexer.py b/vllm/model_executor/layers/sparse_attn_indexer.py
-index fe2b268cd..d56825ef8 100644
+index fe2b268..d56825e 100644
 --- a/vllm/model_executor/layers/sparse_attn_indexer.py
 +++ b/vllm/model_executor/layers/sparse_attn_indexer.py
 @@ -340,6 +340,9 @@ def sparse_attn_indexer(
@@ -5396,7 +6015,7 @@ index fe2b268cd..d56825ef8 100644
          use_persistent_topk = current_platform.is_cuda() and topk_tokens in (
              512,
 diff --git a/vllm/model_executor/models/deepseek_mtp.py b/vllm/model_executor/models/deepseek_mtp.py
-index 88f33ac02..546f92265 100644
+index 88f33ac..546f922 100644
 --- a/vllm/model_executor/models/deepseek_mtp.py
 +++ b/vllm/model_executor/models/deepseek_mtp.py
 @@ -35,6 +35,7 @@ from .deepseek_v2 import (
@@ -5424,7 +6043,7 @@ index 88f33ac02..546f92265 100644
          super().__init__()
          self.config = vllm_config.model_config.hf_config
 diff --git a/vllm/models/deepseek_v4/nvidia/mtp.py b/vllm/models/deepseek_v4/nvidia/mtp.py
-index 64715deae..8c456a69a 100644
+index 64715de..8c456a6 100644
 --- a/vllm/models/deepseek_v4/nvidia/mtp.py
 +++ b/vllm/models/deepseek_v4/nvidia/mtp.py
 @@ -40,6 +40,7 @@ from vllm.model_executor.layers.vocab_parallel_embedding import (
@@ -5450,7 +6069,7 @@ index 64715deae..8c456a69a 100644
          super().__init__()
          self.config = vllm_config.model_config.hf_config
 diff --git a/vllm/models/deepseek_v4/nvidia/ops/o_proj.py b/vllm/models/deepseek_v4/nvidia/ops/o_proj.py
-index 18e3b1056..d53669202 100644
+index 18e3b10..d536692 100644
 --- a/vllm/models/deepseek_v4/nvidia/ops/o_proj.py
 +++ b/vllm/models/deepseek_v4/nvidia/ops/o_proj.py
 @@ -15,13 +15,16 @@ def compute_fp8_einsum_recipe() -> tuple[tuple[int, int, int], bool]:
@@ -5474,7 +6093,7 @@ index 18e3b1056..d53669202 100644
  
 diff --git a/vllm/v1/attention/backends/mla/cubit_sparse_mla.py b/vllm/v1/attention/backends/mla/cubit_sparse_mla.py
 new file mode 100644
-index 000000000..16d22c7cd
+index 0000000..16d22c7
 --- /dev/null
 +++ b/vllm/v1/attention/backends/mla/cubit_sparse_mla.py
 @@ -0,0 +1,1171 @@
@@ -6650,7 +7269,7 @@ index 000000000..16d22c7cd
 +                    tcap, (T + tcap - 1) // tcap, int(capturing), _pfc_launches)
 +    return True
 diff --git a/vllm/v1/attention/backends/mla/flashinfer_mla_sparse.py b/vllm/v1/attention/backends/mla/flashinfer_mla_sparse.py
-index 2a944d061..d4807a5f7 100644
+index 2a944d0..d4807a5 100644
 --- a/vllm/v1/attention/backends/mla/flashinfer_mla_sparse.py
 +++ b/vllm/v1/attention/backends/mla/flashinfer_mla_sparse.py
 @@ -148,6 +148,7 @@ class FlashInferMLASparseSM120Backend(_FlashInferMLASparseBackendBase):
@@ -6681,7 +7300,7 @@ index 2a944d061..d4807a5f7 100644
              # fp8_ds_mla packed layout: 512 NoPE + 16 scales + 128 RoPE.
              return (num_blocks, block_size, 656)
 diff --git a/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py b/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py
-index d802f5688..d192d3aa3 100644
+index d802f56..d192d3a 100644
 --- a/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py
 +++ b/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py
 @@ -62,10 +62,10 @@ class FlashInferMLASparseSM120Impl(SparseMLAAttentionImpl[FlashInferMLASparseMet
@@ -6745,7 +7364,7 @@ index d802f5688..d192d3aa3 100644
          q: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
 diff --git a/vllm/v1/attention/backends/mla/nvfp4_ds_mla_cache.py b/vllm/v1/attention/backends/mla/nvfp4_ds_mla_cache.py
 new file mode 100644
-index 000000000..c37d3729e
+index 0000000..c37d372
 --- /dev/null
 +++ b/vllm/v1/attention/backends/mla/nvfp4_ds_mla_cache.py
 @@ -0,0 +1,53 @@
@@ -6804,7 +7423,7 @@ index 000000000..c37d3729e
 +                                         slot_mapping)
 diff --git a/vllm/v1/attention/backends/mla/sparse_mla_env.py b/vllm/v1/attention/backends/mla/sparse_mla_env.py
 new file mode 100644
-index 000000000..931614177
+index 0000000..9316141
 --- /dev/null
 +++ b/vllm/v1/attention/backends/mla/sparse_mla_env.py
 @@ -0,0 +1,216 @@
@@ -7025,7 +7644,7 @@ index 000000000..931614177
 +    except ValueError:
 +        return 8192
 diff --git a/vllm/v1/attention/ops/merge_attn_states.py b/vllm/v1/attention/ops/merge_attn_states.py
-index cf4338fb1..f0577501e 100644
+index cf4338f..f057750 100644
 --- a/vllm/v1/attention/ops/merge_attn_states.py
 +++ b/vllm/v1/attention/ops/merge_attn_states.py
 @@ -46,6 +46,19 @@ def merge_attn_states(
@@ -7049,7 +7668,7 @@ index cf4338fb1..f0577501e 100644
      # does not support FP8 dtype for inputs, fallback to use Triton kernel.
      # However, when output_scale is provided, the inputs are still BF16/FP16
 diff --git a/vllm/v1/attention/ops/triton_decode_attention.py b/vllm/v1/attention/ops/triton_decode_attention.py
-index dbe3c5705..f12d719fb 100644
+index dbe3c57..f12d719 100644
 --- a/vllm/v1/attention/ops/triton_decode_attention.py
 +++ b/vllm/v1/attention/ops/triton_decode_attention.py
 @@ -530,6 +530,13 @@ def _decode_grouped_att_m_fwd(
@@ -7067,7 +7686,7 @@ index dbe3c5705..f12d719fb 100644
      _fwd_grouped_kernel_stage1[grid](
          q,
 diff --git a/vllm/v1/kv_cache_interface.py b/vllm/v1/kv_cache_interface.py
-index 5a2a5c5e2..33c628e8e 100644
+index 5a2a5c5..33c628e 100644
 --- a/vllm/v1/kv_cache_interface.py
 +++ b/vllm/v1/kv_cache_interface.py
 @@ -382,6 +382,10 @@ class MLAAttentionSpec(FullAttentionSpec):
@@ -7082,7 +7701,7 @@ index 5a2a5c5e2..33c628e8e 100644
              if self.model_version == "deepseek_v4":
                  # DeepseekV4: 448B NoPE + 128B RoPE + 8B fp8 scale = 584B per token.
 diff --git a/vllm/v1/worker/gpu/cudagraph_utils.py b/vllm/v1/worker/gpu/cudagraph_utils.py
-index dad1777b4..1f4b8b92b 100644
+index dad1777..1f4b8b9 100644
 --- a/vllm/v1/worker/gpu/cudagraph_utils.py
 +++ b/vllm/v1/worker/gpu/cudagraph_utils.py
 @@ -317,7 +317,12 @@ class CudaGraphManager:
@@ -7100,7 +7719,7 @@ index dad1777b4..1f4b8b92b 100644
                              # Join offloader's copy stream after forward to avoid
                              # unjoined stream error. The last layer's start_prefetch
 diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
-index 74938a823..1e8deabc4 100644
+index 74938a8..27135b7 100644
 --- a/vllm/v1/worker/gpu_model_runner.py
 +++ b/vllm/v1/worker/gpu_model_runner.py
 @@ -4,6 +4,7 @@
@@ -7781,7 +8400,7 @@ index 74938a823..1e8deabc4 100644
  
          # construct `prev_req_id_to_index` here so `_prepare_input_ids`
          # can map req_id -> previous batch row
-@@ -4731,15 +5254,136 @@ class GPUModelRunner(
+@@ -4731,18 +5254,155 @@ class GPUModelRunner(
              if i in discard_req_indices_set:
                  continue
              prev_req_id_to_index[req_id] = i
@@ -7923,7 +8542,26 @@ index 74938a823..1e8deabc4 100644
      def take_draft_token_ids(self) -> DraftTokenIds | None:
          if not self.num_spec_tokens or not self._draft_token_req_ids:
              return None
-@@ -5209,6 +5853,22 @@ class GPUModelRunner(
++        # moe_w2 spec-guard (VLLM_MOE_W2_SPEC_GUARD): while the base pool is
++        # cold (replay EMA above threshold), drop this step's drafts instead
++        # of scheduling them — a k-token verify batch unions ~(1+k)x the
++        # experts of a pure decode step, so speculation on a cold pool
++        # multiplies miss-replays and is a net loss until the pool warms
++        # (colibri's measured cold-cache MTP regression). The drafter still
++        # ran (cheap); only scheduling is suppressed, and it resumes
++        # automatically via the tier's hysteresis latch.
++        if moe_w2_gate is not None:
++            try:
++                from vllm.model_executor.layers.quantization.utils import (
++                    moe_w2_delta as _w2d)
++                if _w2d.spec_suppressed():
++                    return None
++            except Exception:  # noqa: BLE001 - guard must never crash
++                pass
+         draft_token_ids, req_ids = self._get_draft_token_ids_cpu()
+         return DraftTokenIds(req_ids, draft_token_ids)
+ 
+@@ -5209,6 +5869,40 @@ class GPUModelRunner(
                          )
                          eplb_models += 1
  
@@ -7943,10 +8581,28 @@ index 74938a823..1e8deabc4 100644
 +                ):
 +                    self._pp_share_draft_embed_tokens()
 +
++                # moe_w2 LOOKA/PILOT (router-lookahead, env-gated): collect
++                # the live mlp.gate weights per built w2 layer and allocate
++                # the in-graph prediction buffers. Must run after weight
++                # load (gates materialized, _LAYERS populated) and before
++                # any cudagraph capture. No-op unless armed via env.
++                if moe_w2_gate is not None:
++                    try:
++                        from vllm.model_executor.layers.quantization.utils \
++                            import moe_w2_delta as _w2d
++                        from vllm.model_executor.layers.quantization.utils \
++                            import moe_w2_looka as _w2l
++                        if _w2d._BASE_TIER is not None:
++                            _w2l.arm(self.model,
++                                     _w2d._BASE_TIER.n_layers,
++                                     _w2d._BASE_TIER.dev)
++                    except Exception as e:  # noqa: BLE001 - never fatal
++                        logger.warning("moe_w2 LOOKA arm failed: %s", e)
++
                  self._setup_eagle3_aux_hidden_state_outputs()
  
                  # Resolve the MoE model, unwrapping VLM wrappers if needed.
-@@ -5969,7 +6629,8 @@ class GPUModelRunner(
+@@ -5969,7 +6663,8 @@ class GPUModelRunner(
              else:
                  hidden_states = outputs
  
@@ -7956,7 +8612,7 @@ index 74938a823..1e8deabc4 100644
                  self.speculative_config.use_eagle()
                  or self.speculative_config.uses_draft_model()
                  or self.speculative_config.uses_extract_hidden_states()
-@@ -6875,8 +7536,9 @@ class GPUModelRunner(
+@@ -6875,8 +7570,9 @@ class GPUModelRunner(
          # because some of them change the threshold at init time.
          self.calculate_reorder_batch_threshold()
  
@@ -7968,7 +8624,7 @@ index 74938a823..1e8deabc4 100644
              self.speculative_config.use_eagle()
              or self.speculative_config.uses_draft_model()
          ):
-@@ -6929,7 +7591,8 @@ class GPUModelRunner(
+@@ -6929,7 +7625,8 @@ class GPUModelRunner(
          )
  
          # Initialize drafter's cudagraph dispatcher if using spec decode.
@@ -7979,7 +8635,7 @@ index 74938a823..1e8deabc4 100644
              or self.speculative_config.uses_extract_hidden_states()
          ):
 diff --git a/vllm/v1/worker/gpu_ubatch_wrapper.py b/vllm/v1/worker/gpu_ubatch_wrapper.py
-index 657fc8267..dee74ffb4 100644
+index 657fc82..dee74ff 100644
 --- a/vllm/v1/worker/gpu_ubatch_wrapper.py
 +++ b/vllm/v1/worker/gpu_ubatch_wrapper.py
 @@ -278,6 +278,9 @@ class UBatchWrapper:
@@ -7993,10 +8649,10 @@ index 657fc8267..dee74ffb4 100644
                  ubatch_metadata[0].context.cpu_wait_event.set()
                  for thread in ubatch_threads:
 diff --git a/vllm/v1/worker/gpu_worker.py b/vllm/v1/worker/gpu_worker.py
-index 5e266a313..761593630 100644
+index 5e266a3..22ce29d 100644
 --- a/vllm/v1/worker/gpu_worker.py
 +++ b/vllm/v1/worker/gpu_worker.py
-@@ -616,6 +616,19 @@ class Worker(WorkerBase):
+@@ -616,6 +616,31 @@ class Worker(WorkerBase):
          ):
              self.model_runner._init_kv_zero_meta()
  
@@ -8013,10 +8669,22 @@ index 5e266a313..761593630 100644
 +        except Exception as e:  # noqa: BLE001 - opt-in path, never fatal
 +            logger.warning("moe_w2 delta auto-sizing failed: %s", e)
 +
++        # moe_w2 BASE pool warm-start (VLLM_MOE_W2_POOL_HEAT): preload the
++        # previous run's hot ownership into the GPU slot pool. Same timing
++        # contract as finalize_auto: after weight load (host store staged)
++        # and BEFORE cudagraph capture (slot_table writes precede bake-in).
++        try:
++            from vllm.model_executor.layers.quantization.utils import (
++                moe_w2_delta)
++            if moe_w2_delta._BASE_TIER is not None:
++                moe_w2_delta._BASE_TIER.preload_pool()
++        except Exception as e:  # noqa: BLE001 - warm-start is best-effort
++            logger.warning("moe_w2 pool warm-start failed: %s", e)
++
      @instrument(span_name="Warmup (GPU)")
      def compile_or_warm_up_model(self) -> CompilationTimes:
          warmup_sizes: list[int] = []
-@@ -905,6 +918,8 @@ class Worker(WorkerBase):
+@@ -905,6 +930,8 @@ class Worker(WorkerBase):
              if isinstance(
                  output, ModelRunnerOutput | AsyncModelRunnerOutput | NoneType
              ):
@@ -8025,7 +8693,7 @@ index 5e266a313..761593630 100644
                  return output
  
          assert isinstance(output, IntermediateTensors)
-@@ -914,15 +929,69 @@ class Worker(WorkerBase):
+@@ -914,15 +941,69 @@ class Worker(WorkerBase):
              and not get_pp_group().is_last_rank
          )
  
