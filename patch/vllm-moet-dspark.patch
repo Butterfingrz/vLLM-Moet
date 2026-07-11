@@ -1,11 +1,3 @@
-diff --git a/vllm/config/__pycache__/speculative.cpython-312.pyc b/vllm/config/__pycache__/speculative.cpython-312.pyc
-new file mode 100644
-index 0000000..bbefc3c
-Binary files /dev/null and b/config/__pycache__/speculative.cpython-312.pyc differ
-diff --git a/vllm/config/__pycache__/vllm.cpython-312.pyc b/vllm/config/__pycache__/vllm.cpython-312.pyc
-new file mode 100644
-index 0000000..a3ee9a1
-Binary files /dev/null and b/config/__pycache__/vllm.cpython-312.pyc differ
 diff --git a/vllm/config/speculative.py b/vllm/config/speculative.py
 index de505e1..f0b49e2 100644
 --- a/vllm/config/speculative.py
@@ -301,18 +293,6 @@ index 70a85dd..67d3b5e 100644
              ):
                  unsupported.append("parallel drafting for EAGLE speculative decoding")
  
-diff --git a/vllm/model_executor/models/__pycache__/qwen3_dflash.cpython-312.pyc b/vllm/model_executor/models/__pycache__/qwen3_dflash.cpython-312.pyc
-new file mode 100644
-index 0000000..c946907
-Binary files /dev/null and b/model_executor/models/__pycache__/qwen3_dflash.cpython-312.pyc differ
-diff --git a/vllm/model_executor/models/__pycache__/qwen3_dspark.cpython-312.pyc b/vllm/model_executor/models/__pycache__/qwen3_dspark.cpython-312.pyc
-new file mode 100644
-index 0000000..459b1f6
-Binary files /dev/null and b/model_executor/models/__pycache__/qwen3_dspark.cpython-312.pyc differ
-diff --git a/vllm/model_executor/models/__pycache__/registry.cpython-312.pyc b/vllm/model_executor/models/__pycache__/registry.cpython-312.pyc
-new file mode 100644
-index 0000000..74e0d1c
-Binary files /dev/null and b/model_executor/models/__pycache__/registry.cpython-312.pyc differ
 diff --git a/vllm/model_executor/models/qwen3_dflash.py b/vllm/model_executor/models/qwen3_dflash.py
 index 820260f..6340e22 100644
 --- a/vllm/model_executor/models/qwen3_dflash.py
@@ -625,18 +605,6 @@ index 44e486d..d03eba3 100644
      "DeepSeekV4MTP",
      "DeepseekV4FP8Config",
      "DeepseekV4ForCausalLM",
-diff --git a/vllm/models/deepseek_v4/__pycache__/__init__.cpython-312.pyc b/vllm/models/deepseek_v4/__pycache__/__init__.cpython-312.pyc
-new file mode 100644
-index 0000000..d3fe8bd
-Binary files /dev/null and b/models/deepseek_v4/__pycache__/__init__.cpython-312.pyc differ
-diff --git a/vllm/models/deepseek_v4/nvidia/__pycache__/dspark.cpython-312.pyc b/vllm/models/deepseek_v4/nvidia/__pycache__/dspark.cpython-312.pyc
-new file mode 100644
-index 0000000..12baab9
-Binary files /dev/null and b/models/deepseek_v4/nvidia/__pycache__/dspark.cpython-312.pyc differ
-diff --git a/vllm/models/deepseek_v4/nvidia/__pycache__/model.cpython-312.pyc b/vllm/models/deepseek_v4/nvidia/__pycache__/model.cpython-312.pyc
-new file mode 100644
-index 0000000..92c3f44
-Binary files /dev/null and b/models/deepseek_v4/nvidia/__pycache__/model.cpython-312.pyc differ
 diff --git a/vllm/models/deepseek_v4/nvidia/dspark.py b/vllm/models/deepseek_v4/nvidia/dspark.py
 new file mode 100644
 index 0000000..be4a87b
@@ -1217,10 +1185,6 @@ index aa60ad3..fa6da8c 100644
      model_cls = DeepseekV4Model
  
      # Default mapper assumes the original FP4-expert checkpoint layout.
-diff --git a/vllm/transformers_utils/configs/speculators/__pycache__/algos.cpython-312.pyc b/vllm/transformers_utils/configs/speculators/__pycache__/algos.cpython-312.pyc
-new file mode 100644
-index 0000000..1ac4ca7
-Binary files /dev/null and b/transformers_utils/configs/speculators/__pycache__/algos.cpython-312.pyc differ
 diff --git a/vllm/transformers_utils/configs/speculators/algos.py b/vllm/transformers_utils/configs/speculators/algos.py
 index 0dc3ccc..fb75a27 100644
 --- a/vllm/transformers_utils/configs/speculators/algos.py
@@ -1273,10 +1237,6 @@ index 0dc3ccc..fb75a27 100644
 +    ):
 +        if config_dict.get(key) is not None:
 +            pre_trained_config[key] = config_dict[key]
-diff --git a/vllm/v1/attention/backends/__pycache__/flashinfer.cpython-312.pyc b/vllm/v1/attention/backends/__pycache__/flashinfer.cpython-312.pyc
-new file mode 100644
-index 0000000..a9fd78e
-Binary files /dev/null and b/v1/attention/backends/__pycache__/flashinfer.cpython-312.pyc differ
 diff --git a/vllm/v1/attention/backends/flashinfer.py b/vllm/v1/attention/backends/flashinfer.py
 index 8031900..40193a3 100644
 --- a/vllm/v1/attention/backends/flashinfer.py
@@ -1292,10 +1252,6 @@ index 8031900..40193a3 100644
              return torch.float8_e4m3fn
          elif kv_cache_dtype == "fp8_e5m2":
              return torch.float8_e5m2
-diff --git a/vllm/v1/attention/backends/mla/__pycache__/sparse_swa.cpython-312.pyc b/vllm/v1/attention/backends/mla/__pycache__/sparse_swa.cpython-312.pyc
-new file mode 100644
-index 0000000..47cd6e3
-Binary files /dev/null and b/v1/attention/backends/mla/__pycache__/sparse_swa.cpython-312.pyc differ
 diff --git a/vllm/v1/attention/backends/mla/sparse_swa.py b/vllm/v1/attention/backends/mla/sparse_swa.py
 index df23f34..962c098 100644
 --- a/vllm/v1/attention/backends/mla/sparse_swa.py
@@ -1504,10 +1460,6 @@ index df23f34..962c098 100644
 +            slot_ids,
 +            mask=offset < index_width,
 +        )
-diff --git a/vllm/v1/core/sched/__pycache__/scheduler.cpython-312.pyc b/vllm/v1/core/sched/__pycache__/scheduler.cpython-312.pyc
-new file mode 100644
-index 0000000..be7840e
-Binary files /dev/null and b/v1/core/sched/__pycache__/scheduler.cpython-312.pyc differ
 diff --git a/vllm/v1/core/sched/scheduler.py b/vllm/v1/core/sched/scheduler.py
 index 90d93a1..418f333 100644
 --- a/vllm/v1/core/sched/scheduler.py
@@ -1568,10 +1520,6 @@ index 90d93a1..418f333 100644
      def make_spec_decoding_stats(
          self,
          spec_decoding_stats: SpecDecodingStats | None,
-diff --git a/vllm/v1/engine/__pycache__/core.cpython-312.pyc b/vllm/v1/engine/__pycache__/core.cpython-312.pyc
-new file mode 100644
-index 0000000..7e7993a
-Binary files /dev/null and b/v1/engine/__pycache__/core.cpython-312.pyc differ
 diff --git a/vllm/v1/engine/core.py b/vllm/v1/engine/core.py
 index f97f697..df38279 100644
 --- a/vllm/v1/engine/core.py
@@ -1631,10 +1579,6 @@ index f97f697..df38279 100644
          self.use_spec_decode = vllm_config.speculative_config is not None
          self.check_for_draft_tokens = (
              self.use_spec_decode or vllm_config.model_config.is_diffusion
-diff --git a/vllm/v1/spec_decode/dynamic/__pycache__/utils.cpython-312.pyc b/vllm/v1/spec_decode/dynamic/__pycache__/utils.cpython-312.pyc
-new file mode 100644
-index 0000000..dc996c9
-Binary files /dev/null and b/v1/spec_decode/dynamic/__pycache__/utils.cpython-312.pyc differ
 diff --git a/vllm/v1/spec_decode/dynamic/utils.py b/vllm/v1/spec_decode/dynamic/utils.py
 index de869b1..348eaf2 100644
 --- a/vllm/v1/spec_decode/dynamic/utils.py
@@ -1773,22 +1717,6 @@ index de869b1..348eaf2 100644
 +            vllm_max_batch_size=self._max_num_seqs,
 +            vllm_num_speculative_tokens=self._num_spec_tokens,
 +        )
-diff --git a/vllm/v1/worker/__pycache__/gpu_worker.cpython-312.pyc b/vllm/v1/worker/__pycache__/gpu_worker.cpython-312.pyc
-new file mode 100644
-index 0000000..08c9c2d
-Binary files /dev/null and b/v1/worker/__pycache__/gpu_worker.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/__pycache__/cudagraph_utils.cpython-312.pyc b/vllm/v1/worker/gpu/__pycache__/cudagraph_utils.cpython-312.pyc
-new file mode 100644
-index 0000000..d3ed967
-Binary files /dev/null and b/v1/worker/gpu/__pycache__/cudagraph_utils.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/__pycache__/input_batch.cpython-312.pyc b/vllm/v1/worker/gpu/__pycache__/input_batch.cpython-312.pyc
-new file mode 100644
-index 0000000..92f8ea2
-Binary files /dev/null and b/v1/worker/gpu/__pycache__/input_batch.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/__pycache__/model_runner.cpython-312.pyc b/vllm/v1/worker/gpu/__pycache__/model_runner.cpython-312.pyc
-new file mode 100644
-index 0000000..017a235
-Binary files /dev/null and b/v1/worker/gpu/__pycache__/model_runner.cpython-312.pyc differ
 diff --git a/vllm/v1/worker/gpu/cudagraph_utils.py b/vllm/v1/worker/gpu/cudagraph_utils.py
 index 1f4b8b9..358acf4 100644
 --- a/vllm/v1/worker/gpu/cudagraph_utils.py
@@ -2297,10 +2225,6 @@ index 30ca2dd..894e258 100644
              )
  
          # Post-step KV connector related operations.
-diff --git a/vllm/v1/worker/gpu/sample/__pycache__/gumbel.cpython-312.pyc b/vllm/v1/worker/gpu/sample/__pycache__/gumbel.cpython-312.pyc
-new file mode 100644
-index 0000000..c607f2d
-Binary files /dev/null and b/v1/worker/gpu/sample/__pycache__/gumbel.cpython-312.pyc differ
 diff --git a/vllm/v1/worker/gpu/sample/gumbel.py b/vllm/v1/worker/gpu/sample/gumbel.py
 index fab53fe..7bacdbc 100644
 --- a/vllm/v1/worker/gpu/sample/gumbel.py
@@ -2334,54 +2258,6 @@ index 09153dd..c70f169 100644
      elif speculative_config.use_gemma4_mtp():
          from vllm.v1.worker.gpu.spec_decode.gemma4.speculator import (
              Gemma4Speculator,
-diff --git a/vllm/v1/worker/gpu/spec_decode/__pycache__/__init__.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/__pycache__/__init__.cpython-312.pyc
-new file mode 100644
-index 0000000..0f01ed8
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/__pycache__/__init__.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/__pycache__/rejection_sampler.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/__pycache__/rejection_sampler.cpython-312.pyc
-new file mode 100644
-index 0000000..3569688
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/__pycache__/rejection_sampler.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/__pycache__/rejection_sampler_utils.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/__pycache__/rejection_sampler_utils.cpython-312.pyc
-new file mode 100644
-index 0000000..1dafb2f
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/__pycache__/rejection_sampler_utils.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/__pycache__/speculator.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/__pycache__/speculator.cpython-312.pyc
-new file mode 100644
-index 0000000..7fbd4f7
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/__pycache__/speculator.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/__pycache__/utils.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/__pycache__/utils.cpython-312.pyc
-new file mode 100644
-index 0000000..8863ad0
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/__pycache__/utils.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/autoregressive/__pycache__/__init__.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/autoregressive/__pycache__/__init__.cpython-312.pyc
-new file mode 100644
-index 0000000..2ec6a4b
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/autoregressive/__pycache__/__init__.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/autoregressive/__pycache__/cudagraph_utils.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/autoregressive/__pycache__/cudagraph_utils.cpython-312.pyc
-new file mode 100644
-index 0000000..5f9d29d
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/autoregressive/__pycache__/cudagraph_utils.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/autoregressive/__pycache__/speculator.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/autoregressive/__pycache__/speculator.cpython-312.pyc
-new file mode 100644
-index 0000000..d45e7ec
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/autoregressive/__pycache__/speculator.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/dflash/__pycache__/__init__.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/dflash/__pycache__/__init__.cpython-312.pyc
-new file mode 100644
-index 0000000..ea6affc
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/dflash/__pycache__/__init__.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/dflash/__pycache__/cudagraph.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/dflash/__pycache__/cudagraph.cpython-312.pyc
-new file mode 100644
-index 0000000..f20cb06
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/dflash/__pycache__/cudagraph.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/dflash/__pycache__/speculator.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/dflash/__pycache__/speculator.cpython-312.pyc
-new file mode 100644
-index 0000000..da437ab
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/dflash/__pycache__/speculator.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/dflash/__pycache__/utils.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/dflash/__pycache__/utils.cpython-312.pyc
-new file mode 100644
-index 0000000..358fd26
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/dflash/__pycache__/utils.cpython-312.pyc differ
 diff --git a/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py b/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
 index 1bd1308..9014fc0 100644
 --- a/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
@@ -2739,22 +2615,6 @@ index 0000000..208f01a
 @@ -0,0 +1,2 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-diff --git a/vllm/v1/worker/gpu/spec_decode/dspark/__pycache__/__init__.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/dspark/__pycache__/__init__.cpython-312.pyc
-new file mode 100644
-index 0000000..e4aa979
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/dspark/__pycache__/__init__.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/dspark/__pycache__/scheduler.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/dspark/__pycache__/scheduler.cpython-312.pyc
-new file mode 100644
-index 0000000..5c6851f
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/dspark/__pycache__/scheduler.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/dspark/__pycache__/speculator.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/dspark/__pycache__/speculator.cpython-312.pyc
-new file mode 100644
-index 0000000..9879792
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/dspark/__pycache__/speculator.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/dspark/__pycache__/utils.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/dspark/__pycache__/utils.cpython-312.pyc
-new file mode 100644
-index 0000000..16b4c20
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/dspark/__pycache__/utils.cpython-312.pyc differ
 diff --git a/vllm/v1/worker/gpu/spec_decode/dspark/scheduler.py b/vllm/v1/worker/gpu/spec_decode/dspark/scheduler.py
 new file mode 100644
 index 0000000..28a3417
@@ -3524,22 +3384,6 @@ index 0000000..b5f2a54
 +        draft_model.lm_head = target_lm_head
 +
 +    return draft_model
-diff --git a/vllm/v1/worker/gpu/spec_decode/eagle/__pycache__/__init__.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/eagle/__pycache__/__init__.cpython-312.pyc
-new file mode 100644
-index 0000000..573277c
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/eagle/__pycache__/__init__.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/eagle/__pycache__/eagle3_utils.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/eagle/__pycache__/eagle3_utils.cpython-312.pyc
-new file mode 100644
-index 0000000..6f9e1a2
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/eagle/__pycache__/eagle3_utils.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/eagle/__pycache__/speculator.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/eagle/__pycache__/speculator.cpython-312.pyc
-new file mode 100644
-index 0000000..02df1ca
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/eagle/__pycache__/speculator.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/eagle/__pycache__/utils.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/eagle/__pycache__/utils.cpython-312.pyc
-new file mode 100644
-index 0000000..b7e1610
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/eagle/__pycache__/utils.cpython-312.pyc differ
 diff --git a/vllm/v1/worker/gpu/spec_decode/eagle/eagle3_utils.py b/vllm/v1/worker/gpu/spec_decode/eagle/eagle3_utils.py
 index 360f649..66d0ba8 100644
 --- a/vllm/v1/worker/gpu/spec_decode/eagle/eagle3_utils.py
@@ -3560,22 +3404,6 @@ index 360f649..66d0ba8 100644
      if layer_ids and isinstance(layer_ids, (list, tuple)):
          return tuple(layer_ids)
      return None
-diff --git a/vllm/v1/worker/gpu/spec_decode/gemma4/__pycache__/__init__.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/gemma4/__pycache__/__init__.cpython-312.pyc
-new file mode 100644
-index 0000000..9b08fd4
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/gemma4/__pycache__/__init__.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/gemma4/__pycache__/speculator.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/gemma4/__pycache__/speculator.cpython-312.pyc
-new file mode 100644
-index 0000000..4c1d70b
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/gemma4/__pycache__/speculator.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/mtp/__pycache__/__init__.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/mtp/__pycache__/__init__.cpython-312.pyc
-new file mode 100644
-index 0000000..0e40d23
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/mtp/__pycache__/__init__.cpython-312.pyc differ
-diff --git a/vllm/v1/worker/gpu/spec_decode/mtp/__pycache__/speculator.cpython-312.pyc b/vllm/v1/worker/gpu/spec_decode/mtp/__pycache__/speculator.cpython-312.pyc
-new file mode 100644
-index 0000000..3b8d2ca
-Binary files /dev/null and b/v1/worker/gpu/spec_decode/mtp/__pycache__/speculator.cpython-312.pyc differ
 diff --git a/vllm/v1/worker/gpu/spec_decode/rejection_sampler.py b/vllm/v1/worker/gpu/spec_decode/rejection_sampler.py
 index 3868604..5e7cadc 100644
 --- a/vllm/v1/worker/gpu/spec_decode/rejection_sampler.py
