@@ -36,7 +36,9 @@ suite_params:
   batch_decode:
     concurrency: [1, 4]         # mns 4 in this config
   needle:
-    sizes_words: [8000, 48000, 100000]
+    # 100000 words tokenized past the 131072 window (HTTP 400, observed
+    # 2026-07-11); 88000 words ~= 119-128K tokens - inside with margin.
+    sizes_words: [8000, 48000, 88000]
     depth: 0.5
 
 tuning:

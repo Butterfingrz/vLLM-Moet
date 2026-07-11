@@ -1,0 +1,22 @@
+# "rtx" box, 5090 group: 4x RTX 5090 32 GB — HOST GPU indices 4-7 (the
+# PRO 6000s are 0-3, bench/boxes/rtx-pro6000x4.yaml). Always pass --gpus
+# with host indices (e.g. --gpus 4 for one card, --gpus 4,5,6,7 for TP4).
+
+id: rtx-5090x4
+gpus:
+  name: "RTX 5090"
+  count: 4
+  vram_gb: 32
+host_ram_gb: 1007
+
+runtime: docker
+docker_image: vllm-moet-recipes:v024
+shm_size: 64g
+
+env:
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+
+models:
+  DeepSeek-V4-Flash: /workspace/ds4flash-official
+
+log_dir: /root/logs/bench

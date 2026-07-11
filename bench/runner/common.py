@@ -182,8 +182,11 @@ def _docker_serve_cmd(recipe, box, port, gpus, recipe_file, extra_binds):
         raise ValueError(f"box {box['id']}: runtime docker needs docker_image")
     rid = recipe["id"]
     dev = ",".join(str(g) for g in gpus)
+    # docker's --gpus value is CSV-parsed: a bare comma ("device=0,1") splits
+    # into device=0 + count 1 -> "cannot set both Count and DeviceIDs".
+    # The whole value must be one quoted CSV field: "device=0,1".
     cmd = ["docker", "run", "--rm", "--name", container_name(port),
-           "--gpus", f"device={dev}",
+           "--gpus", f'"device={dev}"',
            "--network", "host", "--ipc", "host",
            "--shm-size", box.get("shm_size", "64g"),
            "-e", f"PORT={port}",

@@ -2,7 +2,7 @@
 id: glm-5.2-nvfp4/pro6000x4-tp4-quality
 model: GLM-5.2-NVFP4
 served_name: glm-5.2
-summary: "4x RTX PRO 6000 TP4 - + FP4 delta (auto) + confidence gate tau=0.60"
+summary: "4x RTX PRO 6000 TP4 - + FP4 delta (auto, KV 8 GiB) + confidence gate tau=0.60"
 
 requires:
   gpus: 4
@@ -26,6 +26,12 @@ serve_args:
   - --kv-cache-dtype fp8
   - --block-size 256
   - --max-model-len 131072
+  # Clamp KV so DELTA_GB=auto gets real VRAM: without it KV eats 21.5 GiB and
+  # the pool auto-sizes to 3.5 GiB (798 slots, ~23% token hit-rate); with the
+  # clamp the pool gets ~18 GiB (4088 slots) - the config the historical
+  # 83-85 tok/s was actually measured in (internal/GLM52_V024_NEXT_SESSION.md,
+  # 2026-07-09 ~04:55). 8 GiB/rank = 156,928 KV tokens = 1.2x the 128K window.
+  - --kv-cache-memory-bytes 8589934592
   - --gpu-memory-utilization 0.93
   - --max-num-batched-tokens 1024
   - --max-num-seqs 4
@@ -44,7 +50,9 @@ suite_params:
   batch_decode:
     concurrency: [1, 4]
   needle:
-    sizes_words: [8000, 48000, 100000]
+    # 100000 words tokenized past the 131072 window (HTTP 400, observed
+    # 2026-07-11); 88000 words ~= 119-128K tokens - inside with margin.
+    sizes_words: [8000, 48000, 88000]
     depth: 0.5
 
 tuning:
@@ -53,6 +61,21 @@ tuning:
   axes:
     - kind: env
       name: VLLM_MOE_W2_GATE_TAU
-      values: ["0.60", "0.75"]
+      # tau is "fire if max_prob <= tau": lower = fewer FP4 re-runs = faster.
+      # 0.60 was picked on DS4; sweep down too - GLM fires far more on code.
+      values: ["0.50", "0.60", "0.75"]
       restart: false
       file_env: VLLM_MOE_W2_GATE_TAU_FILE   # sweep rewrites the file, no reboot
+
+notes: |
+  2026-07-11 investigation (mtp-k-ab release dir): the imported 83-85 tok/s
+  is a best-case number - measured with bench_tok.py's "The quick brown fox"
+  prompt, whose greedy continuation is a repeating phrase the MTP drafter
+  accepts at ~100% (spec-decode ceiling) and the gate almost never fires on.
+  On the harness's code-refactor probe this config decodes 54-67 tok/s
+  (acceptance 2.3-2.8; boot-to-boot spread is real: the delta tier's runtime
+  promotions perturb the greedy trajectory, +-20% across boots on the same
+  config). Expect the first live harness run to flag a regression vs the
+  imported row - that delta is measurement honesty, not a code regression.
+  VLLM_MOE_W2_DELTA_TRACE=1 costs nothing measurable (51.5/78.3 vs 53.5/77.7
+  refactor/fox across two boots) - safe to keep on for pool observability.
