@@ -1,7 +1,5 @@
-# Scratch A/B suite for the MTP-k comparison (glm quality config, k=2/5/7).
-# No allow_recipe_overrides: every variant gets IDENTICAL probe params.
-# decode + acceptance is the point; needle 100k words sanity-checks the 128K
-# window still serves under the bigger verify graphs.
+# A/B suite for recipe variants: no allow_recipe_overrides, so every
+# variant gets identical probe params.
 
 id: mtp-ab
 probes:

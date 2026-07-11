@@ -45,9 +45,7 @@ suite_params:
   batch_decode:
     concurrency: [1, 4]
   needle:
-    # GLM tokenizes the filler at ~1.397 tok/word: 27000 words would be ~37.7K
-    # tokens - past the 32768 window (the baseline "PASS <=27K tok" claim is
-    # tokens; 19000 words ~= 26.5K tokens hits it inside the window).
+    # filler is ~1.4 tok/word: 19000 words = 26.5K tok (window 32768)
     sizes_words: [3400, 8000, 16000, 19000]
     depth: 0.5
 
