@@ -1,9 +1,3 @@
-# "rtx" box, PRO 6000 group: 4x RTX PRO 6000 Blackwell Workstation 96 GB
-# (GPUs 0-3 of an 8-GPU host that also carries 4x RTX 5090 — those are
-# bench/boxes/rtx-5090x4.yaml; pass --gpus with HOST indices to pin a group).
-# Multi-GPU NCCL works WITHOUT NCCL_P2P_DISABLE on this host (the standing
-# GLM PP2 demo runs flagless).
-
 id: rtx-pro6000x4
 gpus:
   name: "RTX PRO 6000 Blackwell Workstation"

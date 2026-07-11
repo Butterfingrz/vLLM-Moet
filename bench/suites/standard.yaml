@@ -1,6 +1,3 @@
-# The release suite. Probe params here are defaults; recipes override via
-# suite_params (e.g. needle sizes per context window).
-
 id: standard
 allow_recipe_overrides: true
 probes:
@@ -15,8 +12,6 @@ probes:
     words: 8000
     runs: 3
   - kind: needle
-    # fractions of max_model_len (rounded down to whole K words); recipes
-    # usually override with explicit word counts validated for the window.
     sizes_frac: [0.03, 0.25, 0.5, 0.95]
     depth: 0.5
     max_tokens: 512

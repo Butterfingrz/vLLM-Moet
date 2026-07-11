@@ -1,5 +1,3 @@
-# The "753B on two 96 GB cards" claim: 2-bit base in pinned host RAM,
-# GPU pool caches hot experts (three tiers with the small FP4 delta + gate).
 id: glm-5.2-nvfp4/pro6000x2-basecache
 model: GLM-5.2-NVFP4
 served_name: glm-5.2
@@ -8,7 +6,7 @@ summary: "2x RTX PRO 6000 TP2 - host-resident base, 44 GiB/rank expert cache"
 requires:
   gpus: 2
   vram_gb: 96
-  host_ram_gb: 256              # ~190 GiB pinned base + headroom
+  host_ram_gb: 256
 
 context: 32768
 load_timeout_s: 3600
@@ -16,7 +14,7 @@ load_timeout_s: 3600
 env:
   VLLM_MOE_W2: "1"
   VLLM_MOE_W2_BASE_CACHE_GB: "44"
-  VLLM_MOE_W2_DELTA_GB: "2"     # gate-filled FP4 tier on top (three-tier)
+  VLLM_MOE_W2_DELTA_GB: "2"
   VLLM_MOE_W2_GATE: "1"
   VLLM_MOE_W2_PLANES_CACHE: "{planes_cache}"
 
@@ -37,7 +35,7 @@ serve_args:
   - --compilation-config {"cudagraph_mode":"FULL_AND_PIECEWISE","custom_ops":["all"]}
 
 warmup:
-  decode_requests: 12           # pool convergence: miss replays dominate cold
+  decode_requests: 12
 
 suite_params:
   decode:
@@ -45,7 +43,6 @@ suite_params:
   batch_decode:
     concurrency: [1, 4]
   needle:
-    # filler is ~1.4 tok/word: 19000 words = 26.5K tok (window 32768)
     sizes_words: [3400, 8000, 16000, 19000]
     depth: 0.5
 
@@ -59,13 +56,3 @@ tuning:
     - kind: env
       name: VLLM_MOE_W2_DELTA_GB
       values: ["0", "2"]
-
-notes: |
-  Pool hit-rate lines from the server log are attached to the result - the
-  claim depends on routing concentration (~91% of routings at half coverage).
-  NVMe expert stores are the shipped superset of the old RAM:NVMe split
-  experiment (VLLM_MOE_W2_BASE_NVME_RATIO is gone): add
-  VLLM_MOE_W2_STORE_DIR=<dir> + VLLM_MOE_W2_BASE_RAM_GB=<GiB> to move the
-  host store onto a pack file with a pinned MRU arena (also persists the
-  quantization across boots). Promote into this recipe's env at the next
-  re-measure.

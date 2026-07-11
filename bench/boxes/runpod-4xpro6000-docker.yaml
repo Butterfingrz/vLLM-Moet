@@ -1,9 +1,3 @@
-# The same physical box as runpod-4xpro6000.yaml, driven through the RECIPES
-# image instead of the venv — benching exactly the artifact customers run.
-# The runner mounts local weights over /models (the launcher's download
-# no-ops) and the checkout's recipes over the baked-in copies, so recipe
-# edits apply without an image rebuild.
-
 id: runpod-4xpro6000-docker
 gpus:
   name: "RTX PRO 6000 Blackwell"
@@ -15,10 +9,8 @@ runtime: docker
 docker_image: vllm-moet-recipes:v024
 shm_size: 64g
 
-# Host quirks only — passed as -e. Toolchain env (CUDA_HOME, FLASHINFER_*,
-# VLLM_MOE_W2_CUBIT_DIR, PATH prepends) stays out: the image ships its own.
 env:
-  NCCL_P2P_DISABLE: "1"             # this host: P2P silently corrupt
+  NCCL_P2P_DISABLE: "1"
   PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
 
 models:

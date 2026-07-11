@@ -1,4 +1,3 @@
-# GLM-5.2 (753B) TP4 with MTP - the fast config (105 tok/s class).
 id: glm-5.2-nvfp4/pro6000x4-tp4-mtp
 model: GLM-5.2-NVFP4
 served_name: glm-5.2
@@ -13,7 +12,7 @@ load_timeout_s: 3600
 
 env:
   VLLM_MOE_W2: "1"
-  VLLM_MOE_W2_DELTA_GB: "0"     # bare 2-bit base; the quality tier is the -quality variant
+  VLLM_MOE_W2_DELTA_GB: "0"
   VLLM_MOE_W2_PLANES_CACHE: "{planes_cache}"
 
 serve_args:
@@ -34,9 +33,8 @@ serve_args:
 
 suite_params:
   batch_decode:
-    concurrency: [1, 4]         # mns 4 in this config
+    concurrency: [1, 4]
   needle:
-    # filler is ~1.4 tok/word: 88000 words = 122,950 tok (window 131072)
     sizes_words: [8000, 48000, 88000]
     depth: 0.5
 
@@ -49,9 +47,3 @@ tuning:
       key: num_speculative_tokens
       values: [1, 2, 3]
       restart: true
-
-notes: |
-  Serve flags reconstructed from README/docs (the 2026-07-09 runs predate the
-  harness); verify against the next live run. --kv-cache-dtype nvfp4 is the
-  +38% KV pool variant (415K->571K tokens at decode parity) - worth its own
-  recipe once re-validated on the release candidate.

@@ -1,6 +1,3 @@
-# Kimi-K2.7-Code on 2 cards: host-resident 2-bit base + GPU expert cache.
-# Functional bring-up config (14.4 tok/s with the pool still converging);
-# blocking once warm numbers stand - see matrix.yaml.
 id: kimi-k2.7-code-nvfp4/pro6000x2-basecache
 model: Kimi-K2.7-Code-NVFP4
 served_name: kimi-k2.7-code
@@ -9,7 +6,7 @@ summary: "2x RTX PRO 6000 TP2 - host-resident base, 52 GiB/rank cache (~39% cove
 requires:
   gpus: 2
   vram_gb: 96
-  host_ram_gb: 384              # ~266 GiB pinned base + headroom
+  host_ram_gb: 384
 
 context: 16384
 load_timeout_s: 3600
@@ -37,7 +34,7 @@ serve_args:
   - --compilation-config {"cudagraph_mode":"FULL_AND_PIECEWISE","custom_ops":["all"]}
 
 warmup:
-  decode_requests: 16           # 384-expert routing: give the pool real traffic
+  decode_requests: 16
 
 suite_params:
   decode:
@@ -54,9 +51,3 @@ tuning:
     - kind: env
       name: VLLM_MOE_W2_BASE_CACHE_GB
       values: ["48", "52"]
-
-notes: |
-  Routing concentration at 384 experts top-8 is a different regime than
-  DS4/GLM - the 19%-coverage~=96%-hit heuristic must be re-established here
-  (docs/kimi-k27-code.md, BASE-cache section). Pool hit-rate log lines are
-  attached to the result for exactly that.

@@ -1,5 +1,3 @@
-# Smoke suite: is the config alive and sane. Not a release artifact.
-
 id: quick
 probes:
   - kind: decode

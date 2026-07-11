@@ -1,5 +1,3 @@
-# Kimi-K2.7-Code (1T) TP4, full native 256K window - the headline config.
-# Validated bring-up: docs/kimi-k27-code.md (measured results).
 id: kimi-k2.7-code-nvfp4/pro6000x4-tp4-256k
 model: Kimi-K2.7-Code-NVFP4
 served_name: kimi-k2.7-code
@@ -10,7 +8,7 @@ requires:
   vram_gb: 96
 
 context: 262144
-load_timeout_s: 3600            # ~25 min cold / ~14.5 min on planes cache
+load_timeout_s: 3600
 
 env:
   VLLM_MOE_W2: "1"
@@ -36,11 +34,11 @@ serve_args:
 
 suite_params:
   batch_decode:
-    concurrency: [1, 4, 8]      # mns 8 in this config
+    concurrency: [1, 4, 8]
   needle:
     sizes_words: [6000, 24000, 60000, 96000, 144000, 186000]
     depth: 0.5
-    max_tokens: 512             # thinking off; reasoning models need headroom
+    max_tokens: 512
 
 tuning:
   objective: decode.median_tok_s
@@ -53,9 +51,3 @@ tuning:
       name: VLLM_MOE_W2_AFRAG
       values: ["1", "0"]
       restart: true
-
-notes: |
-  No MTP - the checkpoint ships no drafter head (the Eagle3 external drafter
-  is the -eagle3 variant). 248K needle passes but replies drift after the
-  correct passphrase (YaRN edge quality, not retrieval) - keep the largest
-  release-gated needle at ~186K words (~248K tokens is 1.33 tok/word here).

@@ -1,6 +1,3 @@
-# A/B suite for recipe variants: no allow_recipe_overrides, so every
-# variant gets identical probe params.
-
 id: mtp-ab
 probes:
   - kind: decode

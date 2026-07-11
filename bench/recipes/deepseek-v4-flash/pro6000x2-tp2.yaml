@@ -34,6 +34,3 @@ suite_params:
     concurrency: [1, 4]
   needle:
     sizes_words: [8000, 20000]
-
-notes: |
-  The published TP2 prefill figure (5 791 tok/s) predates AFRAG; re-measure.

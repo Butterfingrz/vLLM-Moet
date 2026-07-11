@@ -1,5 +1,3 @@
-# Kimi-K2.7-Code TP4 + the AQ-MedAI Eagle3 community drafter (+12% median,
-# high run-to-run variance - see docs/kimi-k27-code.md, Eagle3 section).
 id: kimi-k2.7-code-nvfp4/pro6000x4-tp4-eagle3
 model: Kimi-K2.7-Code-NVFP4
 served_name: kimi-k2.7-code
@@ -15,9 +13,6 @@ load_timeout_s: 3600
 
 env:
   VLLM_MOE_W2: "1"
-  # Delta tier OFF for this recipe: its runtime precision flips make greedy
-  # non-deterministic, which couples into acceptance and spreads throughput
-  # 38-63 tok/s. Benchmarked without it, by policy.
   VLLM_MOE_W2_DELTA_GB: "0"
   VLLM_MOE_W2_PLANES_CACHE: "{planes_cache}"
 
@@ -40,7 +35,7 @@ serve_args:
 
 suite_params:
   decode:
-    runs: 9                     # spec-decode variance: report the spread honestly
+    runs: 9
   batch_decode:
     concurrency: [1, 4, 8]
   needle:
@@ -53,11 +48,5 @@ tuning:
     - kind: serve_json
       arg: --speculative-config
       key: num_speculative_tokens
-      values: [1, 3]            # MLA capture-size issue at other values
+      values: [1, 3]
       restart: true
-
-notes: |
-  Alternatives staged but unbenchmarked as recipes: suffix decoding
-  ({"method":"suffix","num_speculative_tokens":32}, arctic-inference) and
-  plain ngram - both zero-extra-VRAM; sweep them here if this variant keeps
-  underdelivering.

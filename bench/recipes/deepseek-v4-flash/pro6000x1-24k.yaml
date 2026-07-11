@@ -1,4 +1,3 @@
-# DS4-Flash, single 96 GB card, throughput config (the README headline row).
 id: deepseek-v4-flash/pro6000x1-24k
 model: DeepSeek-V4-Flash
 served_name: deepseek-v4-flash
@@ -30,7 +29,7 @@ serve_args:
 
 suite_params:
   batch_decode:
-    concurrency: [1, 4]          # mns 4 in this config; the full 1-32 curve is the -batch variant
+    concurrency: [1, 4]
   needle:
     sizes_words: [8000, 20000]
     depth: 0.5
@@ -42,8 +41,3 @@ tuning:
     - kind: env
       name: VLLM_MOE_W2_DELTA_GB
       values: ["auto", "1", "0"]
-
-notes: |
-  Historical batch-scaling numbers (933 tok/s @32) were taken with
-  --max-num-seqs 32 --max-num-batched-tokens 2048; fold that into a sweep or a
-  dedicated batch recipe on the next live run.
