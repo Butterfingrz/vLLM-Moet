@@ -1045,7 +1045,7 @@ index 7cdb04c..6481313 100644
          assert self.moe_kernel is not None
          return self.moe_kernel.apply(
 diff --git a/vllm/model_executor/layers/quantization/modelopt.py b/vllm/model_executor/layers/quantization/modelopt.py
-index d51a2dd..31cfb43 100644
+index d51a2dd..2fe74cc 100644
 --- a/vllm/model_executor/layers/quantization/modelopt.py
 +++ b/vllm/model_executor/layers/quantization/modelopt.py
 @@ -1,6 +1,7 @@
@@ -1172,7 +1172,7 @@ index d51a2dd..31cfb43 100644
          raise ValueError(
              f"{self.__class__.__name__} uses the new modular kernel initialization "
              "logic. This function should not be called."
-@@ -1548,10 +1644,49 @@ class ModelOptNvFp4FusedMoE(FusedMoEMethodBase):
+@@ -1548,10 +1644,56 @@ class ModelOptNvFp4FusedMoE(FusedMoEMethodBase):
          )
          layer.register_parameter("w2_input_scale", w2_input_scale)
  
@@ -1190,10 +1190,16 @@ index d51a2dd..31cfb43 100644
 +        from vllm.model_executor.layers.quantization.utils import moe_w2_cubit
 +        if moe_w2_cubit.is_w2_layer(getattr(layer, "layer_name", "")):
 +            if not moe_w2_cubit.plan_pack_skip(layer):
-+                for pname in ("w13_weight", "w13_weight_scale",
-+                              "w2_weight", "w2_weight_scale"):
-+                    p_ = getattr(layer, pname)
-+                    p_.data = p_.data.cpu()
++                # first boot / store miss: stream-build stages lazily
++                # (buffers materialize per layer as its tensors load,
++                # requant fires on the last, staging drops in place) —
++                # peak host RAM stays O(layers in flight), not
++                # O(checkpoint). Fallback: classic all-layers CPU staging.
++                if not moe_w2_cubit.arm_stream_build(layer):
++                    for pname in ("w13_weight", "w13_weight_scale",
++                                  "w2_weight", "w2_weight_scale"):
++                        p_ = getattr(layer, pname)
++                        p_.data = p_.data.cpu()
 +
      def process_weights_after_loading(self, layer: RoutedExperts) -> None:
          """
@@ -1214,7 +1220,8 @@ index d51a2dd..31cfb43 100644
 +            # (identical build order); len(_LAYERS) for older paths
 +            key = getattr(layer, "_moe_w2_create_key",
 +                          len(moe_w2_cubit._LAYERS))
-+            moe_w2_cubit.build_layer_planes_nvfp4(layer, key)
++            if not getattr(layer, "_moe_w2_stream_built", False):
++                moe_w2_cubit.build_layer_planes_nvfp4(layer, key)
 +            layer._moe_w2_key = key
 +            self._moe_w2_active = True
 +            self.moe_quant_config = FUSED_MOE_UNQUANTIZED_CONFIG
@@ -1222,7 +1229,7 @@ index d51a2dd..31cfb43 100644
  
          # Use a single gscale for w13.
          if self.moe.is_act_and_mul and not torch.allclose(
-@@ -1655,6 +1790,19 @@ class ModelOptNvFp4FusedMoE(FusedMoEMethodBase):
+@@ -1655,6 +1797,19 @@ class ModelOptNvFp4FusedMoE(FusedMoEMethodBase):
          shared_experts: SharedExperts | None,
          shared_experts_input: torch.Tensor | None,
      ) -> torch.Tensor:
@@ -1242,7 +1249,7 @@ index d51a2dd..31cfb43 100644
          assert not self.is_monolithic
          assert self.moe_kernel is not None
          return self.moe_kernel.apply(
-@@ -2473,6 +2621,9 @@ class ModelOptMixedPrecisionConfig(ModelOptQuantConfigBase):
+@@ -2473,6 +2628,9 @@ class ModelOptMixedPrecisionConfig(ModelOptQuantConfigBase):
  
          # Excluded layers
          if self.is_layer_excluded(prefix):
@@ -1331,10 +1338,10 @@ index 32a2d86..3e83d5a 100644
              mn=r,
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_cubit.py b/vllm/model_executor/layers/quantization/utils/moe_w2_cubit.py
 new file mode 100644
-index 0000000..edeaf92
+index 0000000..d24d4c1
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_cubit.py
-@@ -0,0 +1,1372 @@
+@@ -0,0 +1,1497 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Routed experts on 2-bit tensor-sym planes (cubit moe_w2) for the
@@ -1726,6 +1733,131 @@ index 0000000..edeaf92
 +            "neither host-staged nor copied from the checkpoint "
 +            "(first: key %d)", key)
 +    logger.debug("moe_w2: layer key %d loader-skipped", key)
++    return True
++
++
++# ---- streaming FIRST boot (VLLM_MOE_W2_STREAM_BUILD, default on) ---------
++# With no pack and no planes cache to skip from, the loader used to stage
++# the FULL expert checkpoint in host RAM before a single layer was
++# requantized — ~400+ GB transient on GLM-5.2, reported as a 4-5 h
++# swap-through first boot on a 354 GB host. Streaming build requants each
++# layer the moment its LAST expected expert tensor lands (exact per-param
++# load counting, no ordering assumptions) and stubs its staging right
++# after: peak staging = O(one layer) ≈ 6 GB instead of the checkpoint.
++# The GPU is idle during load anyway, so the per-layer requant overlaps
++# shard I/O instead of serializing after it. VLLM_MOE_W2_STREAM_BUILD=0
++# restores the stage-everything-then-build behaviour.
++_STREAM = os.getenv("VLLM_MOE_W2_STREAM_BUILD", "1") == "1"
++_stream_logged = False
++
++
++class _StreamLoader:
++    """Per-param weight_loader wrapper: counts SUCCESSFUL (expert, shard)
++    loads and triggers the layer build when every big param is complete.
++    A load arriving after the build would be silent data loss (the params
++    are stubs by then) — fail loudly instead."""
++
++    def __init__(self, layer, pname, inner):
++        self._layer = layer
++        self._pname = pname
++        self._inner = inner
++
++    def __call__(self, param, loaded_weight, *args, **kwargs):
++        # LAZY staging: the create hook left this param as a 0-byte stub
++        # (allocating every layer's host buffer up front peaked at ~300+ GB
++        # before the first shard was even read — measured). Materialize the
++        # layer's buffer the moment its first tensor arrives; with a
++        # layer-major checkpoint only a couple of layers are ever
++        # in-flight, an unordered one merely degrades to the old profile.
++        if param.data.numel() == 0:
++            shape = self._layer._moe_w2_stream_shapes[self._pname]
++            param.data = torch.empty(shape, dtype=param.data.dtype,
++                                     device="cpu")
++        ret = self._inner(param, loaded_weight, *args, **kwargs)
++        ok = (ret is True) if kwargs.get("return_success") else True
++        if not ok:
++            return ret
++        pend = self._layer._moe_w2_pending
++        if pend.get(self._pname, 0) <= 0:
++            raise RuntimeError(
++                f"moe_w2 stream-build: {self._pname} load arrived after "
++                f"the layer was already built — more (expert, shard) "
++                f"tensors than expected; set VLLM_MOE_W2_STREAM_BUILD=0 "
++                f"and report the checkpoint")
++        pend[self._pname] -= 1
++        if all(v == 0 for v in pend.values()):
++            key = self._layer._moe_w2_create_key
++            build_layer_planes_nvfp4(self._layer, key)
++            # Drop the staging storage IN PLACE on the ORIGINAL Parameter
++            # objects. _finish_layer replaced the layer's attributes with
++            # stub Parameters, but load_weights' params_dict (built once,
++            # up front) still references the originals for the rest of the
++            # load — without this, nothing frees until load_weights returns
++            # and the "streaming" peak is the whole checkpoint again
++            # (measured: 517 GB at 29/47 shards on GLM TP2).
++            for p in self._layer._moe_w2_stream_orig:
++                p.data = torch.empty(0, dtype=p.data.dtype, device="cpu")
++            self._layer._moe_w2_stream_orig = ()
++            self._layer._moe_w2_stream_built = True
++            logger.debug("moe_w2: layer key %d stream-built during load",
++                         key)
++        return ret
++
++
++def arm_stream_build(layer) -> bool:
++    """Arm the streaming per-layer build on a layer plan_pack_skip missed
++    (first boot, or a store that does not yet hold it). Expected loads per
++    param: w13-side shards land twice per expert (w1, w3), w2-side once —
++    exact counts over ALL SIX params the requant reads (including scale_2:
++    building before they land would bake uninitialized per-tensor scales
++    into the planes AND the caches), so completeness needs no
++    checkpoint-ordering assumption.
++
++    Staging is LAZY: the four big params become 0-byte stubs here and a
++    layer's buffers materialize on its FIRST loaded tensor (the up-front
++    create_weights allocation of every layer peaked at ~300 GB before the
++    first shard was read — measured), then drop IN PLACE at build (the
++    attribute swap alone frees nothing: load_weights' params_dict holds
++    the original objects until the load returns — measured 517 GB).
++    Returns True when armed (the caller then skips its own staging).
++    No-op unless VLLM_MOE_W2_STREAM_BUILD=1 (default)."""
++    global _stream_logged
++    if not (_STREAM and enabled()):
++        return False
++    try:
++        E = layer.w13_weight.shape[0]
++    except Exception:  # noqa: BLE001 - unexpected layout: staged path
++        return False
++    expected = {"w13_weight": 2 * E, "w13_weight_scale": 2 * E,
++                "w13_weight_scale_2": 2 * E,
++                "w2_weight": E, "w2_weight_scale": E,
++                "w2_weight_scale_2": E}
++    big = ("w13_weight", "w13_weight_scale", "w2_weight", "w2_weight_scale")
++    wrappers = {}
++    for pname in expected:
++        p = getattr(layer, pname, None)
++        inner = getattr(p, "weight_loader", None)
++        if p is None or inner is None:
++            return False                # leave the layer fully staged
++        wrappers[pname] = (p, _StreamLoader(layer, pname, inner))
++    layer._moe_w2_pending = expected
++    # originals of the BIG params: their storage is dropped in place at
++    # build time, and their SHAPES feed the lazy materialization
++    layer._moe_w2_stream_orig = tuple(getattr(layer, p) for p in big)
++    layer._moe_w2_stream_shapes = {
++        p: tuple(getattr(layer, p).shape) for p in big}
++    for pname in big:                   # lazy: nothing staged until loaded
++        p = getattr(layer, pname)
++        p.data = torch.empty(0, dtype=p.data.dtype, device="cpu")
++    for pname, (p, wrap) in wrappers.items():
++        p.weight_loader = wrap
++    if not _stream_logged:
++        _stream_logged = True
++        logger.info(
++            "moe_w2 STREAM-BUILD armed: layer staging materializes on its "
++            "first loaded tensor and requants on its last (peak staging = "
++            "layers in flight, not the checkpoint); "
++            "VLLM_MOE_W2_STREAM_BUILD=0 restores the old path")
 +    return True
 +
 +

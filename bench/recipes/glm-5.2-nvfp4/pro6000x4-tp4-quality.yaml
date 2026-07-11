@@ -6,6 +6,7 @@ summary: "4x RTX PRO 6000 TP4 - + FP4 delta (auto, KV 8 GiB) + confidence gate t
 requires:
   gpus: 4
   vram_gb: 96
+  host_ram_gb: 160
 
 context: 131072
 load_timeout_s: 3600
