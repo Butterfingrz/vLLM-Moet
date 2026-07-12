@@ -3,7 +3,7 @@
 Hand‑written SASS assembled by `cubit` (pinned @ `5912400`). Cubins are **SM120‑only**.
 Assemble: `cubit asm sass/<SASS> -o <cubin> --kernel <kernel> --mercury-stub sass/qmma_e4m3.merc.stub`.
 
-## Split FP4 MoE GEMM — moe_w4s_mm (EXPERIMENTAL, no serving integration yet)
+## Split FP4 MoE GEMM — moe_w4s_mm (serving: opt‑in `VLLM_MOE_W2_DELTA_SPLIT=1`, default off)
 FP4-quality GEMM reading **two resident 2‑bit planes** (base codes + refinement)
 instead of the full nibble plane: the delta slot stores only the refinement →
 **half the FP4 pool bytes per expert** (2× pool coverage at equal VRAM). Nested
