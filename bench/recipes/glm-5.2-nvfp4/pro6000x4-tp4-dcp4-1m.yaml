@@ -11,6 +11,11 @@ requires:
 context: 1048576
 load_timeout_s: 3600
 
+# MTP acceptance is depth-FLAT on real context (2.94 code / 2.0 prose task,
+# 8K-891K). Do not "measure" acceptance-vs-depth over random-word filler:
+# junk context sends greedy output into loop attractors whose draftability
+# is a lottery (see docs/benchmarks/mtp-acceptance-depth-2026-07-13.md).
+
 env:
   VLLM_MOE_W2: "1"
   VLLM_MOE_W2_DELTA_GB: "auto"
