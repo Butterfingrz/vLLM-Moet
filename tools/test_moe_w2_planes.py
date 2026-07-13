@@ -5,6 +5,11 @@
    {-4,-1,1,4}, odd-symmetric tie-break).
 2. pack_fragment_major layout: every byte lands where the kernel doc says.
 3. round-trip: codes -> plane -> (python unpack) -> codes.
+4. QUINTAL split (moe_w4q_mm): decode(base(n), digits(n)) == e2m1(n) for
+   ALL 16 nibbles — the split-FP4 bit-exactness criterion (the legacy
+   2-bit refinement fails it on nibble 0/8: mag-0 merge).
+5. pack_quintal_fragment_major layout: every 10-bit word lands where the
+   kernel doc says (P8/P2 sections, per-lane 80-bit LE record).
 
 Run: python3 tools/test_moe_w2_planes.py  (CPU, ~seconds)
 """
@@ -29,6 +34,10 @@ _CODE_TO_NIBBLE = _m._CODE_TO_NIBBLE
 _NIBBLE_TO_CODE = _m._NIBBLE_TO_CODE
 mxfp4_to_codes = _m.mxfp4_to_codes
 pack_fragment_major = _m.pack_fragment_major
+pack_quintal_fragment_major = _m.pack_quintal_fragment_major
+nibbles_to_quintal_digits = _m.nibbles_to_quintal_digits
+quintal_dequant = _m.quintal_dequant
+split_fp4_dequant = _m.split_fp4_dequant
 
 # ---- 1. quantization map equals the validated tool -------------------------
 err16, cmap16 = _subset_tables(4, symmetric=True)
@@ -101,4 +110,61 @@ w = torch.tensor([[0x52, 0xE0]], dtype=torch.uint8)   # nibbles: 2,5 then 0,E
 c = mxfp4_to_codes(w)
 assert c.tolist() == [[2, 3, 2, 0]], c.tolist()        # 1.0->+1, 3->+4, +0->+1, -4->-4
 print("4. mxfp4 nibble order (lo=even k)")
+
+# ---- 5. QUINTAL split bit-exactness (all 16 nibbles) ------------------------
+E2M1 = torch.tensor([0, .5, 1, 1.5, 2, 3, 4, 6] * 2, dtype=torch.float64)
+E2M1[8:] *= -1
+nib16 = torch.arange(16, dtype=torch.uint8)
+got = quintal_dequant(nib16).double()
+assert torch.equal(got, E2M1), (got, E2M1)
+# digits stay in base-5 and reconstruct the mag index with the class
+d = nibbles_to_quintal_digits(nib16)
+assert d.min() >= 0 and d.max() <= 4, d
+# the legacy 2-bit refinement fails exactly on the zeros (documents the
+# reason quintal replaced it)
+legacy = split_fp4_dequant(nib16).double()
+mism = (legacy != E2M1).nonzero().flatten().tolist()
+assert mism == [0, 8], mism
+print("5. quintal decode == e2m1 for 16/16 nibbles (legacy fails 0x0/0x8)")
+
+# ---- 6. quintal plane layout (every word, every lane) -----------------------
+N, K = 32, 128
+nibs = torch.randint(0, 16, (N, K), dtype=torch.uint8)
+nibs.view(-1)[:16] = torch.arange(16, dtype=torch.uint8)
+plane = pack_quintal_fragment_major(nibs)
+assert plane.numel() == N * K * 5 // 16
+digits = nibbles_to_quintal_digits(nibs)
+
+
+def elem(nb, kb, g, t, j, k4):
+    """(row, k) of element k4 of plane byte j for lane (g,t) in (nb,kb)."""
+    tile, rest = divmod(j, 4)
+    k32, half = divmod(rest, 2)
+    row = nb * 16 + tile * 8 + g
+    k = kb * 64 + k32 * 32 + half * 16 + t * 4 + k4
+    return row, k
+
+
+BLK = 320                        # 256 B P8 + 64 B P2 per (nb, kb)
+bad = 0
+for nb in range(N // 16):
+    for kb in range(K // 64):
+        blk = (nb * (K // 64) + kb) * BLK
+        for g in range(8):
+            for t in range(4):
+                lane = g * 4 + t
+                p8 = plane[blk + lane * 8: blk + lane * 8 + 8]
+                p2 = plane[blk + 256 + lane * 2: blk + 256 + lane * 2 + 2]
+                rec = int.from_bytes(bytes(p8.tolist() + p2.tolist()),
+                                     "little")
+                for w in range(8):
+                    c = (rec >> (10 * w)) & 0x3FF
+                    want = 0
+                    for k4 in range(4):
+                        r, k = elem(nb, kb, g, t, w, k4)
+                        want += int(digits[r, k]) * 5 ** k4
+                    if c != want:
+                        bad += 1
+assert bad == 0, f"{bad} quintal words misplaced"
+print("6. quintal fragment-major layout exact (all words)")
 print("ALL PASS")

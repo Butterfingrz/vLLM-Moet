@@ -3,9 +3,10 @@
 
 Three-tier layout with VLLM_MOE_W2_DELTA_SPLIT: host 2-bit base -> GPU
 base pool ([codes13|sc13|codes2|sc2] slots) -> FP4 need-pool holding
-2-bit REFINEMENT planes (no private scales). moe_w4s_mm reads base codes
-+ scales from the BASE slot and the refinement from the FP4 slot, so a
-pair is split-served only when the expert is resident in BOTH tables.
+RADIX-5 QUINTAL planes (2.5 b/elem, no private scales). moe_w4q_mm reads
+base codes + scales from the BASE slot and the quintal refinement from
+the FP4 slot, so a pair is split-served only when the expert is resident
+in BOTH tables. The FP4-hit reference is TRUE e2m1 (bit-exact split).
 
 Checks:
  1. mixed dispatch vs reference: base-only experts at 2-bit dequant,
@@ -34,8 +35,8 @@ os.environ["VLLM_MOE_W2_DELTA_SPLIT"] = "1"
 from vllm.model_executor.layers.quantization.utils import moe_w2_cubit  # noqa: E402
 from vllm.model_executor.layers.quantization.utils import moe_w2_delta  # noqa: E402
 from vllm.model_executor.layers.quantization.utils.moe_w2_planes import (  # noqa: E402
-    mxfp4_to_codes, mxfp4_to_nibbles, nibbles_to_refinement,
-    pack_fragment_major, pack_scales, split_fp4_dequant,
+    mxfp4_to_codes, mxfp4_to_nibbles, pack_fragment_major,
+    pack_quintal_fragment_major, pack_scales, quintal_dequant,
 )
 from vllm.model_executor.layers.quantization.utils.fp8_utils import (  # noqa: E402
     per_token_group_quant_fp8,
@@ -74,29 +75,35 @@ moe_w2_cubit._LAYERS[0] = dict(
     off4_s2=2 * c13len + s13len + 2 * c2len,
 )
 
-# BASE tier: small pool (forces eviction pressure in check 3)
-moe_w2_delta._BASE_GB = 0.25         # base_enabled() -> True
+# BASE tier: pool = E + small margin slots (forces eviction pressure in
+# check 3 while every expert can be resident for checks 1-2)
+_bslot = (c13len + s13len + c2len + s2len)
+_bgb = (E + 5) * _bslot / 2**30
+moe_w2_delta._BASE_GB = _bgb         # base_enabled() -> True
 btier = moe_w2_delta.DeltaTier(1, E, dev,
                                w13_bytes=c13len + s13len,
                                w2_bytes=c2len + s2len,
-                               pool_gb=0.25, policy="lru", tag="base")
+                               pool_gb=_bgb, policy="lru", tag="base")
 btier.miss_count = torch.zeros(1, dtype=torch.int32, device=dev)
 moe_w2_delta._BASE_TIER = btier
 btier.add_layer_host_planes(0, torch.cat((planes13, sc13p), dim=1),
                             torch.cat((planes2, sc2p), dim=1))
 
-# FP4 need-pool in SPLIT mode: refinement planes, no scale sections
+# FP4 need-pool in SPLIT mode: quintal planes, no scale sections
+# (pool sized for E/2 slots at whatever the shapes make the slot)
+_slot = 2 * I * H * 5 // 16 + H * I * 5 // 16
 tier = moe_w2_delta.DeltaTier(1, E, dev,
-                              w13_bytes=2 * I * H // 4,
-                              w2_bytes=H * I // 4,
-                              pool_gb=0.1, policy="freq", tag="fp4",
+                              w13_bytes=2 * I * H * 5 // 16,
+                              w2_bytes=H * I * 5 // 16,
+                              pool_gb=(E // 2 + 2) * _slot / 2**30,
+                              policy="freq", tag="fp4",
                               host_pinned=True)
 moe_w2_delta._TIER = tier
 btier._coupled_fp4 = tier            # the residency coupling under test
-rf13 = torch.stack([pack_fragment_major(
-    nibbles_to_refinement(mxfp4_to_nibbles(w13_pack[e]))) for e in range(E)])
-rf2 = torch.stack([pack_fragment_major(
-    nibbles_to_refinement(mxfp4_to_nibbles(w2_pack[e]))) for e in range(E)])
+rf13 = torch.stack([pack_quintal_fragment_major(
+    mxfp4_to_nibbles(w13_pack[e])) for e in range(E)])
+rf2 = torch.stack([pack_quintal_fragment_major(
+    mxfp4_to_nibbles(w2_pack[e])) for e in range(E)])
 tier.add_layer_host_planes(0, rf13, rf2)
 
 # make every expert BASE-resident, half of them FP4-resident
@@ -123,8 +130,9 @@ def dequant2(pack, sc):
 
 
 def dequant_split(pack, sc):
+    # TRUE e2m1: the quintal split is bit-exact (no mag-0 merge)
     nib = mxfp4_to_nibbles(pack)
-    return split_fp4_dequant(nib) * torch.exp2(sc.float() - 127.0).repeat_interleave(32, -1)
+    return quintal_dequant(nib) * torch.exp2(sc.float() - 127.0).repeat_interleave(32, -1)
 
 
 def reference(zero_experts=()):

@@ -140,23 +140,23 @@ print(f"DELTA mixed ({len(promoted)}/{E} promoted): max_rel={rel2:.3e} "
       f"cos={cos2:.6f}")
 ok = ok and rel2 < 0.06 and cos2 > 0.999
 
-# ---- SPLIT FP4 (VLLM_MOE_W2_DELTA_SPLIT): the delta slots hold 2-bit
-# REFINEMENT planes and moe_w4s_mm reads them alongside the resident base.
-# Reference: split_fp4_dequant (true FP4 modulo the mag-0 -> 0.5 merge).
+# ---- SPLIT FP4 (VLLM_MOE_W2_DELTA_SPLIT): the delta slots hold RADIX-5
+# QUINTAL planes and moe_w4q_mm reads them alongside the resident base.
+# Reference: TRUE e2m1 (the quintal split is bit-exact — no merge).
 from vllm.model_executor.layers.quantization.utils.moe_w2_planes import (
-    nibbles_to_refinement, split_fp4_dequant)
+    pack_quintal_fragment_major, quintal_dequant)
 
 moe_w2_delta._SPLIT = True          # env is read at import; force for test
 assert moe_w2_delta.split_enabled()
 tier_s = moe_w2_delta.DeltaTier(1, E, dev,
-                                w13_bytes=2 * I * H // 4,
-                                w2_bytes=H * I // 4)
+                                w13_bytes=2 * I * H * 5 // 16,
+                                w2_bytes=H * I * 5 // 16)
 moe_w2_delta._TIER = tier_s
-rf13 = torch.stack([pack_fragment_major(
-    nibbles_to_refinement(mxfp4_to_nibbles(w13_pack[e]))) for e in range(E)])
-rf2 = torch.stack([pack_fragment_major(
-    nibbles_to_refinement(mxfp4_to_nibbles(w2_pack[e]))) for e in range(E)])
-assert rf13.shape[1] == 2 * I * H // 4 and rf2.shape[1] == H * I // 4
+rf13 = torch.stack([pack_quintal_fragment_major(
+    mxfp4_to_nibbles(w13_pack[e])) for e in range(E)])
+rf2 = torch.stack([pack_quintal_fragment_major(
+    mxfp4_to_nibbles(w2_pack[e])) for e in range(E)])
+assert rf13.shape[1] == 2 * I * H * 5 // 16 and rf2.shape[1] == H * I * 5 // 16
 tier_s.add_layer_host_planes(0, rf13, rf2)
 for e in promoted:
     slot = tier_s._take_slot(set())
@@ -166,7 +166,7 @@ torch.cuda.synchronize()
 
 def dequant_split(pack, sc):
     nib = mxfp4_to_nibbles(pack)
-    return (split_fp4_dequant(nib)
+    return (quintal_dequant(nib)
             * torch.exp2(sc.float() - 127.0).repeat_interleave(32, -1))
 
 
