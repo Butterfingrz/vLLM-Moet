@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
-"""Storm harness for the RESIDENT + SPLIT-FP4 + gate path — hunts the
-accumulating-corruption bug (GSM8K wrong-sets growing 5c9c11c12 across
-runs on one server, prefix-cache reset ruled out).
+"""Storm harness for the RESIDENT + SPLIT-FP4 + gate path — originally
+built to hunt the accumulating-corruption hypothesis (GSM8K wrong-sets
+growing 5c9c11c12 across runs; verdict: mechanics clean, the loss was the
+2-bit refinement's mag-0 merge). Now runs the RADIX-5 QUINTAL slots
+(moe_w4q_mm) and checks bit-exactness at the nibble level.
 
 Real DS4-Flash geometry (H=4096, I=2048, E=256/layer, top-6), resident
-2-bit planes + FP4 need-tier holding REFINEMENT rows. Loop (default 600
+2-bit planes + FP4 need-tier holding QUINTAL rows. Loop (default 600
 rounds) with a long-tailed router so new experts keep trickling in
 (gate storms early, trickle promotions forever — the live pattern):
 
   forward -> uncapped force_promote (gate idiom) -> manager passes ->
   INVARIANTS:
-    I1 slot bytes == host refinement row  (torn/raced promotion copy)
+    I1 slot bytes == host quintal row  (torn/raced promotion copy)
     I2 mirror/slot_table/owner coherent
-    I3 host row STILL == freshly recomputed refinement from nibbles
-       (host-store corruption after boot)
+    I3 host row STILL == freshly recomputed quintal plane from NIBBLES
+       (host-store corruption after boot; nibble-level by construction —
+       quintal decode is bit-exact e2m1, no merge to hide behind)
     I4 resident base planes/scales checksum unchanged (stray writes)
     I5 forward output == mixed dequant reference for CURRENT mirror
-       (dispatch-level wrongness with byte-clean state)
+       (dispatch-level wrongness with byte-clean state; FP4-hits compare
+       against TRUE e2m1 — the reference has no merge)
 
 Env: ROUNDS (600), E (256), LAYERS (2), SEED, POOL_SLOTS (96).
 Run inside the vllm image on one GPU.
@@ -31,8 +35,8 @@ os.environ.setdefault("VLLM_MOE_W2", "1")
 from vllm.model_executor.layers.quantization.utils import moe_w2_cubit  # noqa: E402
 from vllm.model_executor.layers.quantization.utils import moe_w2_delta  # noqa: E402
 from vllm.model_executor.layers.quantization.utils.moe_w2_planes import (  # noqa: E402
-    mxfp4_to_codes, mxfp4_to_nibbles, nibbles_to_refinement,
-    pack_fragment_major, pack_scales, split_fp4_dequant,
+    mxfp4_to_codes, mxfp4_to_nibbles, pack_fragment_major,
+    pack_quintal_fragment_major, pack_scales, quintal_dequant,
 )
 from vllm.model_executor.layers.quantization.utils.fp8_utils import (  # noqa: E402
     per_token_group_quant_fp8,
@@ -80,8 +84,8 @@ base_sums = [(int(l["st"]["planes13"].long().sum()),
               int(l["st"]["planes2"].long().sum()),
               int(l["st"]["sc2"].long().sum())) for l in layers]
 
-w13r_bytes = 2 * I * H // 4
-w2r_bytes = H * I // 4
+w13r_bytes = 2 * I * H * 5 // 16
+w2r_bytes = H * I * 5 // 16
 pool_gb = POOL_SLOTS * (w13r_bytes + w2r_bytes) / 2**30
 tier = moe_w2_delta.DeltaTier(L, E, dev, w13_bytes=w13r_bytes,
                               w2_bytes=w2r_bytes, pool_gb=pool_gb,
@@ -90,10 +94,10 @@ moe_w2_delta._TIER = tier
 
 host_rows = {}
 for li, l in enumerate(layers):
-    rf13 = torch.stack([pack_fragment_major(
-        nibbles_to_refinement(mxfp4_to_nibbles(l["w13"][e]))) for e in range(E)])
-    rf2 = torch.stack([pack_fragment_major(
-        nibbles_to_refinement(mxfp4_to_nibbles(l["w2"][e]))) for e in range(E)])
+    rf13 = torch.stack([pack_quintal_fragment_major(
+        mxfp4_to_nibbles(l["w13"][e])) for e in range(E)])
+    rf2 = torch.stack([pack_quintal_fragment_major(
+        mxfp4_to_nibbles(l["w2"][e])) for e in range(E)])
     tier.add_layer_host_planes(li, rf13, rf2)
     host_rows[li] = torch.cat((rf13, rf2), dim=1)   # snapshot for I1/I3
 
@@ -108,7 +112,9 @@ def deq2(pack, sc):
 
 
 def deq4(pack, sc):
-    return (split_fp4_dequant(mxfp4_to_nibbles(pack))
+    # TRUE e2m1 — quintal decode is bit-exact (the old split_fp4_dequant
+    # reference hid the mag-0 merge; quintal_dequant == the E2M1 table)
+    return (quintal_dequant(mxfp4_to_nibbles(pack))
             * torch.exp2(sc.float() - 127.0).repeat_interleave(32, -1))
 
 
@@ -188,7 +194,8 @@ for r in range(ROUNDS):
     torch.cuda.synchronize()
     tier.step_end()
 
-    # ---- invariants
+    # ---- invariants (pod lockiem: tlo-owy manager mutuje tablice)
+    tier._lock.acquire()
     mir = tier._mirror
     mapped = [(lj, e, int(mir[lj, e])) for lj in range(L) for e in range(E)
               if int(mir[lj, e]) >= 0]
@@ -211,8 +218,8 @@ for r in range(ROUNDS):
         li_chk = r % L
         l = layers[li_chk]
         for e in [m[1] for m in mapped if m[0] == li_chk][:4]:
-            fresh13 = pack_fragment_major(
-                nibbles_to_refinement(mxfp4_to_nibbles(l["w13"][e])))
+            fresh13 = pack_quintal_fragment_major(
+                mxfp4_to_nibbles(l["w13"][e]))
             row = tier._store.rows_for([(li_chk, e)])[0]
             if not torch.equal(row[:w13r_bytes].cpu(), fresh13.cpu()):
                 print(f"[r{r}] I3 FAIL host row != recompute ({li_chk},{e})")
@@ -225,6 +232,7 @@ for r in range(ROUNDS):
             if sums != base_sums[lj]:
                 print(f"[r{r}] I4 FAIL resident base planes mutated L{lj}")
                 fails += 1
+    tier._lock.release()
     # output checks every 10 rounds (expensive reference):
     # pass-1 vs PRE-promotion mirror, replay vs POST-promotion mirror
     if r % 10 == 9:
