@@ -12004,7 +12004,7 @@ index 09153dd20..c70f169f7 100644
          from vllm.v1.worker.gpu.spec_decode.gemma4.speculator import (
              Gemma4Speculator,
 diff --git a/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py b/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
-index 1bd130838..9014fc0e7 100644
+index 1bd130838..06a4e449e 100644
 --- a/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
 +++ b/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
 @@ -29,6 +29,8 @@ logger = init_logger(__name__)
@@ -12058,7 +12058,7 @@ index 1bd130838..9014fc0e7 100644
          )
  
      def load_draft_model(
-@@ -126,18 +130,39 @@ class DFlashSpeculator(DraftModelSpeculator):
+@@ -126,18 +130,46 @@ class DFlashSpeculator(DraftModelSpeculator):
      ) -> None:
          super().set_attn(model_state, kv_cache_config, block_tables)
  
@@ -12070,12 +12070,20 @@ index 1bd130838..9014fc0e7 100644
 -            "a single kv-cache group."
 -        )
 -        self.draft_kv_cache_group_id = draft_groups[0]
+-        self.draft_block_size = self.block_tables.block_sizes[
 +        self.draft_kv_cache_group_ids = [
 +            gid for gid, g in enumerate(self.attn_groups) if g
 +        ]
 +        assert self.draft_kv_cache_group_ids, "No draft attention groups found."
 +        self.draft_kv_cache_group_id = self.draft_kv_cache_group_ids[0]
-         self.draft_block_size = self.block_tables.block_sizes[
++        # KERNEL block size, not the manager block size: input_block_tables
++        # rows hold kernel-page ids (manager blocks are expanded by
++        # blocks_per_kv_block), so all slot math in the prepare kernel must
++        # use the same unit. With --block-size 256 over a 64-token FlashInfer
++        # page the two differ by 4x and the context K/V would land in pages
++        # the draft attention never reads (measured: all-zero context, all
++        # draft positions collapse to one prediction, acceptance 0).
++        self.draft_block_size = self.block_tables.kernel_block_sizes[
              self.draft_kv_cache_group_id
          ]
  
@@ -12106,7 +12114,7 @@ index 1bd130838..9014fc0e7 100644
      @torch.inference_mode()
      def _run_model(
          self,
-@@ -183,9 +208,11 @@ class DFlashSpeculator(DraftModelSpeculator):
+@@ -183,9 +215,11 @@ class DFlashSpeculator(DraftModelSpeculator):
  
          num_sample = num_reqs * self.num_speculative_steps
          sample_hidden_states = last_hidden_states[self.sample_indices[:num_sample]]
@@ -12119,7 +12127,7 @@ index 1bd130838..9014fc0e7 100644
              self.sample_idx_mapping[:num_sample],
              self.temperature,
              self.seeds,
-@@ -244,6 +271,9 @@ class DFlashSpeculator(DraftModelSpeculator):
+@@ -244,6 +278,9 @@ class DFlashSpeculator(DraftModelSpeculator):
          is_profile: bool = False,
      ) -> torch.Tensor:
          num_reqs = input_batch.num_reqs
@@ -12129,7 +12137,7 @@ index 1bd130838..9014fc0e7 100644
          num_target_tokens = input_batch.num_tokens
          num_query_tokens = num_reqs * self.num_query_per_req
          max_seq_len = input_batch.seq_lens_cpu_upper_bound[:num_reqs].max().item()
-@@ -291,42 +321,56 @@ class DFlashSpeculator(DraftModelSpeculator):
+@@ -291,42 +328,56 @@ class DFlashSpeculator(DraftModelSpeculator):
          # The query slot mapping is written into the shared BlockTables slot_mappings.
          # That buffer's address is what the captured CUDA graph reads from at replay.
          assert self.draft_kv_cache_group_id >= 0
@@ -12173,7 +12181,7 @@ index 1bd130838..9014fc0e7 100644
 +                last_sampled,
 +                next_prefill_tokens,
 +                self.block_tables.input_block_tables[gid],
-+                self.block_tables.block_sizes[gid],
++                self.block_tables.kernel_block_sizes[gid],
 +                self.parallel_drafting_token_id,
 +                self.num_query_per_req,
 +                self.num_speculative_steps,
@@ -12213,7 +12221,7 @@ index 1bd130838..9014fc0e7 100644
          # Every DFlash step has exactly num_query_per_req tokens, so we can use FULL CGs
          batch_desc, num_tokens_across_dp = dispatch_cg_and_sync_dp(
              self.query_cudagraph_manager,
-@@ -367,6 +411,26 @@ class DFlashSpeculator(DraftModelSpeculator):
+@@ -367,6 +418,26 @@ class DFlashSpeculator(DraftModelSpeculator):
                  cudagraph_runtime_mode=batch_desc.cg_mode,
              )
  
@@ -12240,7 +12248,7 @@ index 1bd130838..9014fc0e7 100644
          return self.draft_tokens[:num_reqs]
  
  
-@@ -391,6 +455,7 @@ def _prepare_dflash_inputs_kernel(
+@@ -391,6 +462,7 @@ def _prepare_dflash_inputs_kernel(
      next_prefill_tokens_ptr,
      num_sampled_ptr,
      num_rejected_ptr,
@@ -12248,7 +12256,7 @@ index 1bd130838..9014fc0e7 100644
      # Block table for slot mapping lookup.
      block_table_ptr,
      block_table_stride,
-@@ -401,8 +466,11 @@ def _prepare_dflash_inputs_kernel(
+@@ -401,8 +473,11 @@ def _prepare_dflash_inputs_kernel(
      num_speculative_steps,
      max_num_reqs,
      max_num_tokens,
@@ -12260,7 +12268,7 @@ index 1bd130838..9014fc0e7 100644
  ):
      req_idx = tl.program_id(0)
      block_idx = tl.program_id(1)
-@@ -412,9 +480,17 @@ def _prepare_dflash_inputs_kernel(
+@@ -412,9 +487,17 @@ def _prepare_dflash_inputs_kernel(
      ctx_start = tl.load(target_query_start_loc_ptr + req_idx)
      ctx_end = tl.load(target_query_start_loc_ptr + req_idx + 1)
      num_ctx = ctx_end - ctx_start
@@ -12279,7 +12287,7 @@ index 1bd130838..9014fc0e7 100644
  
      num_sampled = tl.load(num_sampled_ptr + req_idx)
      if num_sampled > 0:
-@@ -444,6 +520,17 @@ def _prepare_dflash_inputs_kernel(
+@@ -444,6 +527,17 @@ def _prepare_dflash_inputs_kernel(
      ctx_slot = ctx_block_id * block_size + (ctx_pos % block_size)
      tl.store(out_context_positions_ptr + ctx_start + j, ctx_pos, mask=is_ctx)
      tl.store(out_context_slot_mapping_ptr + ctx_start + j, ctx_slot, mask=is_ctx)
@@ -12297,7 +12305,7 @@ index 1bd130838..9014fc0e7 100644
  
      # --- Query positions / input_ids / slots ---
      query_pos = last_valid_pos + 1 + query_off
-@@ -461,14 +548,21 @@ def _prepare_dflash_inputs_kernel(
+@@ -461,14 +555,21 @@ def _prepare_dflash_inputs_kernel(
      q_slot = q_block_id * block_size + (query_pos % block_size)
  
      tl.store(out_input_ids_ptr + query_idx, input_id, mask=is_query)
@@ -12324,7 +12332,7 @@ index 1bd130838..9014fc0e7 100644
      tl.store(out_sample_idx_mapping_ptr + sample_idx, req_state_idx, mask=is_sample)
  
      if block_idx == 0:
-@@ -533,6 +627,8 @@ def prepare_dflash_inputs(
+@@ -533,6 +634,8 @@ def prepare_dflash_inputs(
      num_speculative_steps: int,
      max_num_reqs: int,
      max_num_tokens: int,
@@ -12333,7 +12341,7 @@ index 1bd130838..9014fc0e7 100644
  ) -> None:
      num_reqs = input_batch.num_reqs
      assert num_reqs > 0
-@@ -560,6 +656,7 @@ def prepare_dflash_inputs(
+@@ -560,6 +663,7 @@ def prepare_dflash_inputs(
          next_prefill_tokens,
          num_sampled,
          num_rejected,
@@ -12341,7 +12349,7 @@ index 1bd130838..9014fc0e7 100644
          block_table,
          block_table.stride(0),
          parallel_drafting_token_id,
-@@ -568,6 +665,10 @@ def prepare_dflash_inputs(
+@@ -568,6 +672,10 @@ def prepare_dflash_inputs(
          num_speculative_steps,
          max_num_reqs,
          max_num_tokens,
