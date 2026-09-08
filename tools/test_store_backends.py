@@ -102,6 +102,11 @@ def main():
 
     shutil.rmtree(PACK_DIR, ignore_errors=True)
     os.environ["VLLM_MOE_W2_STORE_DIR"] = PACK_DIR
+    # VLLM_MOE_W2_STORE_TAGS (fork ac14656b8) routes only the listed tiers
+    # to the pack-file backend (default "base,fp4"); the test's "t-mmap"
+    # tier must opt in, or it silently gets the pinned store and the
+    # reboot-from-pack case reads zeros.
+    os.environ["VLLM_MOE_W2_STORE_TAGS"] = "base,fp4,t-mmap"
     tier = make_tier("t-mmap")
     for li in range(N_LAYERS):
         tier.add_layer_host_planes(li, *parts[li])
@@ -263,6 +268,7 @@ def main():
 
     os.environ.pop("VLLM_MOE_W2_BASE_RAM_GB", None)
     os.environ.pop("VLLM_MOE_W2_STORE_DIR", None)
+    os.environ.pop("VLLM_MOE_W2_STORE_TAGS", None)
     shutil.rmtree(PACK_DIR, ignore_errors=True)
     print("ALL OK")
 

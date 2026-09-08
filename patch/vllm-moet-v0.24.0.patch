@@ -8835,10 +8835,10 @@ index 000000000..e8cb669a9
 +    ready.cache_clear()
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py b/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py
 new file mode 100644
-index 000000000..e6d442358
+index 000000000..13cab0c8c
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_delta.py
-@@ -0,0 +1,2688 @@
+@@ -0,0 +1,2719 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""FP4 delta tier for the 1-GPU 2-bit MoE path (quality restoration).
@@ -9293,9 +9293,12 @@ index 000000000..e6d442358
 +                        "KV-cache allocation (slot %.1f MiB, reserve %.1f GiB)",
 +                        self.slot_bytes / 2**20, _RESERVE_GB)
 +        else:
-+            logger.info("moe_w2 delta tier: %d slots x %.1f MiB (%.2f GiB pool)",
++            logger.info("moe_w2 delta tier: %d slots x %.1f MiB (%.2f GiB pool)"
++                        "; host store %s",
 +                        self.n_slots, self.slot_bytes / 2**20,
-+                        self.n_slots * self.slot_bytes / 2**30)
++                        self.n_slots * self.slot_bytes / 2**30,
++                        "pinned" if host_pinned else "PAGEABLE (H2D via "
++                        "bounce buffers; VLLM_MOE_W2_DELTA_PIN=1 to pin)")
 +        if _TRACE:
 +            logger.info("moe_w2 delta trace ON: level %d, every %d ticks%s",
 +                        _TRACE, _TRACE_EVERY,
@@ -11213,6 +11216,34 @@ index 000000000..e6d442358
 +    return _BASE_GB > 0
 +
 +
++def delta_host_pinned() -> bool:
++    """Pin the FP4/Δ need-pool host store? VLLM_MOE_W2_DELTA_PIN=auto|0|1.
++
++    ``auto`` (default): pinned unless the BASE tier holds its own store in
++    pinned host RAM — the scalar host-resident configs, where pinning the
++    FP4 set on top of a several-hundred-GiB pinned base would exhaust the
++    host. A pack-file base (VLLM_MOE_W2_STORE_DIR with ``base`` in
++    VLLM_MOE_W2_STORE_TAGS) is mmap/page-cache, so the Δ store is pinned.
++
++    The old rule was ``not base_enabled()``. On the EXL3 trellis+Δ TP4 config
++    (base cache over a pack, Δ from the delta pack) it left the Δ store
++    pageable: every gate fire copied 64 x 10.5 MiB through the driver's
++    bounce buffers at 4.2 GB/s per rank — 145 ms of a ~310 ms fire
++    (GATE_FIRE_TIMING, GPQA C1, 2026-09-08).
++    """
++    mode = os.getenv("VLLM_MOE_W2_DELTA_PIN", "auto").strip().lower()
++    if mode in ("1", "true", "yes", "on"):
++        return True
++    if mode in ("0", "false", "no", "off"):
++        return False
++    if not base_enabled():
++        return True
++    dir_ = os.getenv("VLLM_MOE_W2_STORE_DIR", "").strip()
++    tags = {t.strip() for t in os.getenv(
++        "VLLM_MOE_W2_STORE_TAGS", "base,fp4").split(",") if t.strip()}
++    return bool(dir_) and "base" in tags
++
++
 +def check_pool_floor(top_k: int, n_spec: int, max_num_seqs: int) -> None:
 +    """Boot-time guard: refuse to serve when a pool is sized below its
 +    WORKING-SET floor (VLLM_MOE_W2_FORCE_POOL=1 downgrades to a warning).
@@ -11488,7 +11519,7 @@ index 000000000..e6d442358
 +            w13_bytes=W13_BYTES if w13_bytes is None else w13_bytes,
 +            w2_bytes=W2_BYTES if w2_bytes is None else w2_bytes,
 +            policy=policy, tag=fp4_tag if base_enabled() else "delta",
-+            host_pinned=not base_enabled())
++            host_pinned=delta_host_pinned())
 +        if base_enabled() and split_enabled() and _BASE_TIER is not None:
 +            # residency coupling: the base tier must not evict slots the
 +            # FP4 tier's refinement rows are mapped against
@@ -14737,10 +14768,10 @@ index 000000000..7da0e2969
 +    _ckpt_id.cache_clear()
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_store.py b/vllm/model_executor/layers/quantization/utils/moe_w2_store.py
 new file mode 100644
-index 000000000..6d330a8a8
+index 000000000..06e968acc
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_store.py
-@@ -0,0 +1,996 @@
+@@ -0,0 +1,997 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Host-side expert stores for the 2-bit MoE tiers (moe_w2_delta.DeltaTier).
@@ -15706,8 +15737,9 @@ index 000000000..6d330a8a8
 +        "VLLM_MOE_W2_STORE_TAGS", "base,fp4").split(",") if t.strip()}
 +    if tag not in pack_tags:
 +        logger.info(
-+            "moe_w2 store[%s]: pinned host RAM (VLLM_MOE_W2_STORE_TAGS=%s "
++            "moe_w2 store[%s]: %s host RAM (VLLM_MOE_W2_STORE_TAGS=%s "
 +            "keeps this tier off the pack dir %s)", tag,
++            "pinned" if pinned else "pageable",
 +            ",".join(sorted(pack_tags)), dir_)
 +        return PinnedHostStore(slot_bytes, pinned=pinned)
 +    ram_raw = os.getenv("VLLM_MOE_W2_BASE_RAM_GB", "").strip().lower()
