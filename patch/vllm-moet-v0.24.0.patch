@@ -13152,10 +13152,10 @@ index 000000000..fdcdb214d
 +                t._write_base_ptab_rows(sp[ix:ix + 1])
 diff --git a/vllm/model_executor/layers/quantization/utils/moe_w2_gate.py b/vllm/model_executor/layers/quantization/utils/moe_w2_gate.py
 new file mode 100644
-index 000000000..37c5d4973
+index 000000000..231e1f857
 --- /dev/null
 +++ b/vllm/model_executor/layers/quantization/utils/moe_w2_gate.py
-@@ -0,0 +1,520 @@
+@@ -0,0 +1,550 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Confidence-gated FP4 re-forward for the 2-bit MoE path (directive 2 / Step B).
@@ -13252,6 +13252,25 @@ index 000000000..37c5d4973
 +                           residue; GSM8K showed no gap - stable routing).
 +                           The loop iterates until no rank promotes; steady
 +                           state costs nothing (first check promotes 0).
++  VLLM_MOE_W2_GATE_FP32    0 (default) | 1: compute the signal from an fp32
++                           copy of the logits. The logits arrive in the model
++                           dtype (bf16 on GLM-5.2 / DS4) and the default path
++                           runs logsumexp/exp in bf16: with |logit| in [16, 32)
++                           the bf16 step is 0.125, so lse - top1 lands on
++                           multiples of 0.125 and max_prob collapses onto the
++                           grid bf16(exp(-k/8)) — 33 distinct values in a
++                           whole GPQA run (GLM-5.2 T4+delta, 2026-09-08:
++                           1.0, 0.883, 0.777, 0.6875, 0.605, 0.535, 0.473,
++                           ...). Round-to-nearest puts today's tau=0.60
++                           boundary at true p ~= 0.57 (rows in (0.57, 0.605]
++                           report 0.605 and never fire). fp32 restores a
++                           continuous signal (the sampler already upcasts the
++                           same logits, sampler.py) at [rows, vocab] x 4 B
++                           per step; the top-1/top-2 gap itself stays bf16-
++                           quantized (LM-head precision). Iso-behaviour
++                           mapping: fp32 + tau~0.57 ~= bf16 + tau 0.60. Every
++                           gate cert so far was taken on the bf16 signal, so
++                           the default stays 0 until a paired re-cert.
 +"""
 +
 +import json
@@ -13322,6 +13341,13 @@ index 000000000..37c5d4973
 +_DUMP_PATH = os.getenv("VLLM_MOE_W2_GATE_DUMP", "")
 +# P11 fire-stall timing (see header). Default-off; requires DUMP for output.
 +_FIRE_TIMING = os.getenv("VLLM_MOE_W2_GATE_FIRE_TIMING", "0") == "1"
++# fp32 signal (see header): default-off keeps the bf16-quantized decision
++# every existing cert was taken on.
++_FP32 = os.getenv("VLLM_MOE_W2_GATE_FP32", "0") == "1"
++
++
++def signal_fp32() -> bool:
++    return _FP32
 +
 +
 +def fire_timing_enabled() -> bool:
@@ -13522,6 +13548,10 @@ index 000000000..37c5d4973
 +        return False
 +    if logits.dim() == 1:
 +        logits = logits.unsqueeze(0)
++    if _FP32 and logits.dtype != torch.float32:
++        # signal-only copy: the caller's logits (and the sampler's view of
++        # them) are untouched; argmax/ordering is identical in both dtypes.
++        logits = logits.float()
 +    tau = _current_tau()
 +    top2 = torch.topk(logits, 2, dim=-1).values  # [R, 2]
 +    if _SIGNAL == "margin":
